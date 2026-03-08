@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
-const API_URL = 'http://10.198.139.105:3001';
+import { API_URL } from '@/config/api';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
 

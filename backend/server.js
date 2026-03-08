@@ -18,6 +18,13 @@ app.get('/', (req, res) => {
   res.json({ message: 'Backend is running' });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'ResumAI backend',
+  });
+});
+
 app.post('/generate', async (req, res) => {
   try {
     const { jobTitle, experience, tone, jobDescription } = req.body;
@@ -51,7 +58,7 @@ Job Title:
 ${jobTitle}
 
 Tone:
-${tone}
+${tone || 'Technical'}
 
 Raw Experience:
 ${experience}
@@ -118,7 +125,7 @@ Rules:
 - Do not invent fake achievements, fake metrics, or fake technologies
 - skillsToHighlight should contain the most relevant skills already present or strongly supported
 - missingKeywords should contain useful keywords that seem important for the role but are weak or missing from the resume
-- The tone should be: ${tone}
+- The tone should be: ${tone || 'Technical'}
 
 Current Resume:
 ${resumeText}
@@ -132,7 +139,7 @@ ${jobDescription}
       input: prompt,
     });
 
-    const text = response.output_text || '';
+    const text = (response.output_text || '').trim();
 
     let parsed;
     try {
@@ -145,7 +152,7 @@ ${jobDescription}
     }
 
     return res.json({
-      summary: parsed.summary || '',
+      summary: typeof parsed.summary === 'string' ? parsed.summary : '',
       experienceBullets: Array.isArray(parsed.experienceBullets)
         ? parsed.experienceBullets.slice(0, 4)
         : [],

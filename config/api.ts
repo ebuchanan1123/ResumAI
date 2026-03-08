@@ -1,1 +1,1 @@
-export const API_URL = 'https://your-api-url.com';
+export const API_URL = 'https://resumai-f1rq.onrender.com';
