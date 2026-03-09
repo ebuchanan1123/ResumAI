@@ -1,9 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  findNodeHandle,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -12,86 +10,108 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  UIManager,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-
 import { API_URL } from '@/config/api';
+import { loadProfileFromStorage, type UserProfile } from '@/lib/profileStorage';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
 
-export default function HomeScreen() {
-  const [showSplash, setShowSplash] = useState(true);
-  const [jobTitle, setJobTitle] = useState('');
-  const [experience, setExperience] = useState('');
+type TailoredResumeResponse = {
+  summary: string;
+  skills: string[];
+  experience: {
+    company: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    location: string;
+    bullets: string[];
+  }[];
+  projects: {
+    name: string;
+    role: string;
+    bullets: string[];
+  }[];
+  education: {
+    school: string;
+    degree: string;
+    fieldOfStudy: string;
+    startDate: string;
+    endDate: string;
+    details: string;
+  }[];
+  missingKeywords: string[];
+};
+
+export default function ResumeScreen() {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [jobDescription, setJobDescription] = useState('');
   const [tone, setTone] = useState<Tone>('Technical');
-  const [bullets, setBullets] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const splashOpacity = useRef(new Animated.Value(1)).current;
-  const mainOpacity = useRef(new Animated.Value(0)).current;
-
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const bulletRefs = useRef<Record<number, View | null>>({});
+  const [result, setResult] = useState<TailoredResumeResponse | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(splashOpacity, {
-          toValue: 0,
-          duration: 450,
-          useNativeDriver: true,
-        }),
-        Animated.timing(mainOpacity, {
-          toValue: 1,
-          duration: 450,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setShowSplash(false);
-      });
-    }, 1400);
+    const loadProfile = async () => {
+      try {
+        const storedProfile = await loadProfileFromStorage();
+        setProfile(storedProfile);
+      } catch {
+        Alert.alert('Error', 'Failed to load profile.');
+      } finally {
+        setProfileLoading(false);
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, [mainOpacity, splashOpacity]);
+    loadProfile();
+  }, []);
 
-  const generate = async () => {
-    if (!jobTitle.trim() || experience.trim().length < 20) {
-      Alert.alert('Error', 'Please enter a job title and a longer experience description.');
+  const reloadProfile = async () => {
+    try {
+      const storedProfile = await loadProfileFromStorage();
+      setProfile(storedProfile);
+      Alert.alert('Loaded', 'Latest profile data loaded.');
+    } catch {
+      Alert.alert('Error', 'Failed to reload profile.');
+    }
+  };
+
+  const tailorResume = async () => {
+    if (!profile) {
+      Alert.alert('Error', 'Profile is not loaded yet.');
+      return;
+    }
+
+    if (jobDescription.trim().length < 30) {
+      Alert.alert('Error', 'Please paste a longer job description.');
       return;
     }
 
     try {
       setLoading(true);
-      setBullets([]);
+      setResult(null);
 
-      const res = await fetch(`${API_URL}/generate`, {
+      const res = await fetch(`${API_URL}/tailor-resume`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          jobTitle,
-          experience,
-          tone,
+          profile,
           jobDescription,
+          tone,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed request');
+        throw new Error(data.error || 'Failed to tailor resume.');
       }
 
-      setBullets(data.bullets || []);
-
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 700, animated: true });
-      }, 250);
+      setResult(data);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Something went wrong.');
     } finally {
@@ -99,89 +119,59 @@ export default function HomeScreen() {
     }
   };
 
-  const regenerateBullet = async (index: number) => {
-    if (!jobTitle.trim() || experience.trim().length < 20) {
-      Alert.alert('Error', 'Please enter a job title and a longer experience description.');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jobTitle,
-          experience,
-          tone,
-          jobDescription,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to regenerate bullet.');
-      }
-
-      const newBullets = data.bullets || [];
-      if (!newBullets.length) {
-        throw new Error('No bullets returned.');
-      }
-
-      const updated = [...bullets];
-      updated[index] = newBullets[index] || newBullets[0];
-      setBullets(updated);
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to regenerate bullet.');
-    }
-  };
-
-  const copyBullet = async (bullet: string) => {
-    await Clipboard.setStringAsync(bullet);
-    Alert.alert('Copied', 'Bullet copied to clipboard.');
-  };
-
-  const copyAllBullets = async () => {
-    if (!bullets.length) return;
-
-    const text = bullets.map((bullet) => `• ${bullet}`).join('\n');
+  const copySection = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'All bullets copied to clipboard.');
+    Alert.alert('Copied', 'Section copied to clipboard.');
   };
 
-  const clearAll = () => {
-    setJobTitle('');
-    setExperience('');
-    setJobDescription('');
-    setBullets([]);
-    setTone('Technical');
-    bulletRefs.current = {};
-  };
+  const copyFullResume = async () => {
+    if (!result || !profile) return;
 
-  const scrollToBullet = (index: number) => {
-    const target = bulletRefs.current[index];
-    const scrollNode = scrollViewRef.current;
+    const fullText = `
+${profile.fullName || 'Your Name'}
+${profile.email || ''} ${profile.phone ? `| ${profile.phone}` : ''} ${profile.location ? `| ${profile.location}` : ''}
 
-    if (!target || !scrollNode) return;
+SUMMARY
+${result.summary}
 
-    const targetHandle = findNodeHandle(target);
-    const scrollHandle = findNodeHandle(scrollNode);
+SKILLS
+${result.skills.join(', ')}
 
-    if (!targetHandle || !scrollHandle) return;
+EDUCATION
+${result.education
+  .map(
+    (edu) =>
+      `${edu.school}
+${edu.degree}${edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}
+${edu.startDate} - ${edu.endDate}
+${edu.details || ''}`
+  )
+  .join('\n\n')}
 
-    UIManager.measureLayout(
-        targetHandle,
-        scrollHandle,
-        () => {},
-        (_left, top) => {
-        scrollViewRef.current?.scrollTo({
-            y: Math.max(top - 12, 0),
-            animated: true,
-        });
-        }
-    );
+EXPERIENCE
+${result.experience
+  .map(
+    (exp) =>
+      `${exp.company}
+${exp.title}
+${exp.startDate} - ${exp.endDate}${exp.location ? ` | ${exp.location}` : ''}
+${exp.bullets.map((b) => `• ${b}`).join('\n')}`
+  )
+  .join('\n\n')}
+
+PROJECTS
+${result.projects
+  .map(
+    (project) =>
+      `${project.name}
+${project.role}
+${project.bullets.map((b) => `• ${b}`).join('\n')}`
+  )
+  .join('\n\n')}
+`.trim();
+
+    await Clipboard.setStringAsync(fullText);
+    Alert.alert('Copied', 'Full tailored resume copied to clipboard.');
   };
 
   const ToneButton = ({ value }: { value: Tone }) => {
@@ -199,163 +189,189 @@ export default function HomeScreen() {
     );
   };
 
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const profileLooksEmpty =
+    !profile?.fullName &&
+    !profile?.skills &&
+    (!profile?.experience || profile.experience.every((item) => !item.company && !item.title)) &&
+    (!profile?.projects || profile.projects.every((item) => !item.name));
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {showSplash && (
-        <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]}>
-          <View style={styles.splashInner}>
-            <Text style={styles.splashTitle}>Bullets</Text>
-            <Text style={styles.splashSubtitle}>Crafting stronger resume bullets</Text>
-            <ActivityIndicator size="large" style={styles.splashSpinner} />
-          </View>
-        </Animated.View>
-      )}
-
-      <Animated.View style={[styles.mainContainer, { opacity: mainOpacity }]}>
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoidingContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.screen}
-            contentContainerStyle={styles.contentContainer}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-          >
-            <Text style={styles.title}>ResumAI</Text>
-            <Text style={styles.subtitle}>
-              Turn rough experience into polished, stronger resume bullet points.
+          <Text style={styles.title}>Resume</Text>
+          <Text style={styles.subtitle}>
+            Generate a tailored resume from your saved profile and a target job description.
+          </Text>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.profileStatusHeader}>
+              <Text style={styles.sectionTitle}>Profile Status</Text>
+              <TouchableOpacity style={styles.smallButton} onPress={reloadProfile}>
+                <Text style={styles.smallButtonText}>Reload</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.statusText}>
+              {profileLooksEmpty
+                ? 'Your profile looks mostly empty. Fill out the Profile tab first for better results.'
+                : `Using saved profile for ${profile?.fullName || 'this user'}.`}
             </Text>
+          </View>
 
-            <View style={styles.section}>
-              <Text style={styles.label}>Job Title</Text>
-              <TextInput
-                style={styles.input}
-                value={jobTitle}
-                onChangeText={setJobTitle}
-                placeholder="e.g. Software Developer Intern"
-                placeholderTextColor="#8C8C8C"
-              />
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Target Job Description</Text>
+            <TextInput
+              style={[styles.input, styles.jobDescriptionArea]}
+              multiline
+              value={jobDescription}
+              onChangeText={setJobDescription}
+              placeholder="Paste the internship job description here..."
+              placeholderTextColor="#8C8C8C"
+              textAlignVertical="top"
+            />
 
-              <Text style={styles.label}>Raw Experience</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                multiline
-                value={experience}
-                onChangeText={setExperience}
-                placeholder="e.g. Built responsive web pages using React, worked with APIs, fixed bugs, and improved usability."
-                placeholderTextColor="#8C8C8C"
-                textAlignVertical="top"
-              />
+            <Text style={styles.label}>Tone</Text>
+            <View style={styles.toneRow}>
+              <ToneButton value="Concise" />
+              <ToneButton value="Technical" />
+              <ToneButton value="Impact-focused" />
+            </View>
 
-              <Text style={styles.label}>Target Job Description (Optional but powerful)</Text>
-              <TextInput
-                style={[styles.input, styles.jobDescriptionArea]}
-                multiline
-                value={jobDescription}
-                onChangeText={setJobDescription}
-                placeholder="Paste the internship job description here to tailor the bullets to the role."
-                placeholderTextColor="#8C8C8C"
-                textAlignVertical="top"
-              />
-
-              <Text style={styles.helperText}>
-                Add a job description to make the bullets match recruiter keywords more closely.
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.disabledButton]}
+              onPress={tailorResume}
+              disabled={loading}
+            >
+              <Text style={styles.primaryButtonText}>
+                {loading ? 'Generating...' : 'Generate Tailored Resume'}
               </Text>
+            </TouchableOpacity>
+          </View>
 
-              <Text style={styles.label}>Tone</Text>
-              <View style={styles.toneRow}>
-                <ToneButton value="Concise" />
-                <ToneButton value="Technical" />
-                <ToneButton value="Impact-focused" />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.generateButton, loading && styles.generateButtonDisabled]}
-                onPress={generate}
-                disabled={loading}
-              >
-                <Text style={styles.generateButtonText}>
-                  {loading ? 'Generating...' : 'Generate Resume Bullets'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.clearButton} onPress={clearAll}>
-                <Text style={styles.clearButtonText}>Clear</Text>
-              </TouchableOpacity>
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" />
+              <Text style={styles.loadingText}>Building your tailored resume...</Text>
             </View>
-
+          ) : result ? (
             <View style={styles.resultsSection}>
-              <View style={styles.resultsHeader}>
-                <Text style={styles.resultsTitle}>Generated Bullets</Text>
-                {!!bullets.length && (
-                  <TouchableOpacity onPress={copyAllBullets}>
-                    <Text style={styles.copyAllText}>Copy All</Text>
+              <TouchableOpacity style={styles.copyFullButton} onPress={copyFullResume}>
+                <Text style={styles.copyFullButtonText}>Copy Full Resume</Text>
+              </TouchableOpacity>
+
+              <View style={styles.resultCard}>
+                <View style={styles.resultHeader}>
+                  <Text style={styles.resultTitle}>Summary</Text>
+                  <TouchableOpacity onPress={() => copySection(result.summary)}>
+                    <Text style={styles.copyText}>Copy</Text>
                   </TouchableOpacity>
-                )}
+                </View>
+                <Text style={styles.resultBody}>{result.summary}</Text>
               </View>
 
-              {loading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" />
-                  <Text style={styles.loadingText}>Generating your bullets...</Text>
+              <View style={styles.resultCard}>
+                <View style={styles.resultHeader}>
+                  <Text style={styles.resultTitle}>Skills</Text>
+                  <TouchableOpacity onPress={() => copySection(result.skills.join(', '))}>
+                    <Text style={styles.copyText}>Copy</Text>
+                  </TouchableOpacity>
                 </View>
-              ) : bullets.length > 0 ? (
-                bullets.map((bullet, index) => (
-                  <View
-                    key={index}
-                    style={styles.bulletCard}
-                    ref={(ref) => {
-                        bulletRefs.current[index] = ref;
-                    }}
-                    >
-                    <View style={styles.bulletCardHeader}>
-                      <Text style={styles.bulletCardTitle}>Bullet {index + 1}</Text>
+                <Text style={styles.resultBody}>{result.skills.join(', ')}</Text>
+              </View>
 
-                      <View style={styles.bulletActions}>
-                        <TouchableOpacity
-                          style={styles.regenButton}
-                          onPress={() => regenerateBullet(index)}
-                        >
-                          <Text style={styles.regenButtonText}>Regenerate</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.copyButton}
-                          onPress={() => copyBullet(bullet)}
-                        >
-                          <Text style={styles.copyButtonText}>Copy</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <TextInput
-                      style={styles.bulletText}
-                      multiline
-                      value={bullet}
-                      onFocus={() => scrollToBullet(index)}
-                      onChangeText={(text) => {
-                        const updated = [...bullets];
-                        updated[index] = text;
-                        setBullets(updated);
-                      }}
-                      textAlignVertical="top"
-                    />
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>Education</Text>
+                {result.education.map((edu, index) => (
+                  <View key={index} style={styles.blockItem}>
+                    <Text style={styles.blockHeading}>{edu.school}</Text>
+                    <Text style={styles.blockSubheading}>
+                      {edu.degree}
+                      {edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}
+                    </Text>
+                    <Text style={styles.blockMeta}>
+                      {edu.startDate} - {edu.endDate}
+                    </Text>
+                    {!!edu.details && <Text style={styles.resultBody}>{edu.details}</Text>}
                   </View>
-                ))
-              ) : (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>
-                    Your polished resume bullets will appear here.
-                  </Text>
+                ))}
+              </View>
+
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>Experience</Text>
+                {result.experience.map((exp, index) => (
+                  <View key={index} style={styles.blockItem}>
+                    <Text style={styles.blockHeading}>{exp.company}</Text>
+                    <Text style={styles.blockSubheading}>{exp.title}</Text>
+                    <Text style={styles.blockMeta}>
+                      {exp.startDate} - {exp.endDate}
+                      {exp.location ? ` | ${exp.location}` : ''}
+                    </Text>
+                    {exp.bullets.map((bullet, bulletIndex) => (
+                      <Text key={bulletIndex} style={styles.bulletLine}>
+                        • {bullet}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>Projects</Text>
+                {result.projects.map((project, index) => (
+                  <View key={index} style={styles.blockItem}>
+                    <Text style={styles.blockHeading}>{project.name}</Text>
+                    <Text style={styles.blockSubheading}>{project.role}</Text>
+                    {project.bullets.map((bullet, bulletIndex) => (
+                      <Text key={bulletIndex} style={styles.bulletLine}>
+                        • {bullet}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.resultCard}>
+                <View style={styles.resultHeader}>
+                  <Text style={styles.resultTitle}>Missing Keywords</Text>
+                  <TouchableOpacity
+                    onPress={() => copySection(result.missingKeywords.join(', '))}
+                  >
+                    <Text style={styles.copyText}>Copy</Text>
+                  </TouchableOpacity>
                 </View>
-              )}
+                <Text style={styles.resultBody}>{result.missingKeywords.join(', ')}</Text>
+              </View>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Animated.View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                Your generated summary, skills, experience, projects, and keyword suggestions will appear here.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -364,9 +380,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#000000',
-  },
-  mainContainer: {
-    flex: 1,
   },
   keyboardAvoidingContainer: {
     flex: 1,
@@ -377,60 +390,72 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingBottom: 220,
+    paddingBottom: 160,
   },
-  splashContainer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
+  loadingWrap: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
-    zIndex: 10,
+    paddingVertical: 30,
   },
-  splashInner: {
-    alignItems: 'center',
-  },
-  splashTitle: {
-    color: '#FFFFFF',
-    fontSize: 42,
-    fontWeight: '800',
-    marginBottom: 10,
-  },
-  splashSubtitle: {
-    color: '#9A9A9A',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  splashSpinner: {
-    marginTop: 28,
+  loadingText: {
+    color: '#A3A3A3',
+    marginTop: 12,
+    fontSize: 15,
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: '800',
     marginBottom: 10,
   },
   subtitle: {
     color: '#A3A3A3',
-    fontSize: 17,
-    lineHeight: 25,
-    marginBottom: 28,
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
   },
-  section: {
-    marginBottom: 28,
+  sectionCard: {
+    backgroundColor: '#0C0C0C',
+    borderWidth: 1,
+    borderColor: '#1D1D1D',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  profileStatusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  smallButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  smallButtonText: {
+    color: '#111111',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  statusText: {
+    color: '#A3A3A3',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 12,
   },
   label: {
     color: '#FFFFFF',
     marginTop: 14,
     marginBottom: 8,
     fontWeight: '700',
-    fontSize: 15,
-  },
-  helperText: {
-    color: '#8A8A8A',
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 8,
+    fontSize: 14,
   },
   input: {
     backgroundColor: '#F2F2F2',
@@ -440,13 +465,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111111',
   },
-  textArea: {
-    minHeight: 150,
-    paddingTop: 14,
-  },
   jobDescriptionArea: {
-    minHeight: 170,
+    minHeight: 220,
     paddingTop: 14,
+    marginTop: 12,
   },
   toneRow: {
     flexDirection: 'row',
@@ -474,116 +496,88 @@ const styles = StyleSheet.create({
   toneButtonTextActive: {
     color: '#111111',
   },
-  generateButton: {
-    backgroundColor: '#0F0F0F',
+  primaryButton: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     paddingVertical: 18,
     alignItems: 'center',
     marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#1E1E1E',
   },
-  generateButtonDisabled: {
-    opacity: 0.7,
-  },
-  generateButtonText: {
-    color: '#FFFFFF',
+  primaryButtonText: {
+    color: '#111111',
     fontWeight: '800',
     fontSize: 18,
   },
-  clearButton: {
-    backgroundColor: '#141414',
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#242424',
-  },
-  clearButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
+  disabledButton: {
+    opacity: 0.7,
   },
   resultsSection: {
     marginTop: 4,
   },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  copyFullButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 14,
   },
-  resultsTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
+  copyFullButtonText: {
+    color: '#111111',
     fontWeight: '800',
+    fontSize: 16,
   },
-  copyAllText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  loadingContainer: {
-    paddingVertical: 28,
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#A3A3A3',
-    marginTop: 12,
-    fontSize: 15,
-  },
-  bulletCard: {
+  resultCard: {
     backgroundColor: '#F4F4F4',
     borderRadius: 18,
     padding: 14,
     marginBottom: 14,
   },
-  bulletCardHeader: {
+  resultHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
-    gap: 12,
   },
-  bulletCardTitle: {
+  resultTitle: {
     color: '#111111',
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 15,
   },
-  bulletActions: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  regenButton: {
-    backgroundColor: '#EAEAEA',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  regenButtonText: {
+  copyText: {
     color: '#111111',
     fontWeight: '700',
     fontSize: 13,
   },
-  copyButton: {
-    backgroundColor: '#E6E6E6',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  copyButtonText: {
+  resultBody: {
     color: '#111111',
-    fontWeight: '700',
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 23,
   },
-  bulletText: {
+  blockItem: {
+    marginTop: 12,
+  },
+  blockHeading: {
     color: '#111111',
     fontSize: 16,
-    lineHeight: 24,
-    padding: 5,
-    minHeight: 110,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  blockSubheading: {
+    color: '#111111',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  blockMeta: {
+    color: '#555555',
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  bulletLine: {
+    color: '#111111',
+    fontSize: 15,
+    lineHeight: 23,
+    marginBottom: 6,
   },
   emptyState: {
     backgroundColor: '#0C0C0C',

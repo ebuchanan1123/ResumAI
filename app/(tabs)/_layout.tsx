@@ -21,15 +21,21 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="bullets"
         options={{
           title: 'Bullets',
         }}
       />
       <Tabs.Screen
-        name="resume"
+        name="index"
         options={{
           title: 'Resume',
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
         }}
       />
     </Tabs>

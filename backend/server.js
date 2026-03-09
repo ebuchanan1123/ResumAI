@@ -91,44 +91,71 @@ ${hasJobDescription ? `Target Job Description:\n${jobDescription}` : ''}
 
 app.post('/tailor-resume', async (req, res) => {
   try {
-    const { resumeText, jobDescription, tone } = req.body;
+    const { profile, jobDescription, tone } = req.body;
 
     if (
-      !resumeText ||
-      resumeText.trim().length < 50 ||
+      !profile ||
+      typeof profile !== 'object' ||
       !jobDescription ||
       jobDescription.trim().length < 30
     ) {
       return res.status(400).json({
-        error: 'Missing or invalid resume text or job description.',
+        error: 'Missing or invalid profile or job description.',
       });
     }
 
     const prompt = `
 You are an expert technical resume writer.
 
-Your task is to tailor a resume to a target job description.
+Your task is to generate a fully tailored resume from a user's structured profile and a target job description.
 
 Return your answer in valid JSON only, with this exact structure:
 {
   "summary": "string",
-  "experienceBullets": ["string", "string", "string", "string"],
-  "skillsToHighlight": ["string", "string", "string", "string", "string"],
+  "skills": ["string", "string", "string", "string", "string", "string"],
+  "experience": [
+    {
+      "company": "string",
+      "title": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "location": "string",
+      "bullets": ["string", "string", "string"]
+    }
+  ],
+  "projects": [
+    {
+      "name": "string",
+      "role": "string",
+      "bullets": ["string", "string"]
+    }
+  ],
+  "education": [
+    {
+      "school": "string",
+      "degree": "string",
+      "fieldOfStudy": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "details": "string"
+    }
+  ],
   "missingKeywords": ["string", "string", "string", "string", "string"]
 }
 
 Rules:
-- Keep the summary concise, professional, and tailored to the job
-- Write exactly 4 improved experience bullets
-- Start each bullet with a strong action verb
+- Tailor the content to the target job description
+- Be concise, professional, and ATS-friendly
 - Do not use first person
-- Do not invent fake achievements, fake metrics, or fake technologies
-- skillsToHighlight should contain the most relevant skills already present or strongly supported
-- missingKeywords should contain useful keywords that seem important for the role but are weak or missing from the resume
-- The tone should be: ${tone || 'Technical'}
+- Do not invent fake experience, fake metrics, or fake technologies
+- Use only information that is supported by the profile
+- Prioritize the most relevant experience and projects for the role
+- Write strong bullet points starting with action verbs
+- For skills, return the most relevant skills for this role
+- Keep the tone: ${tone || 'Technical'}
 
-Current Resume:
-${resumeText}
+User Profile:
+${JSON.stringify(profile, null, 2)}
 
 Target Job Description:
 ${jobDescription}
@@ -153,12 +180,10 @@ ${jobDescription}
 
     return res.json({
       summary: typeof parsed.summary === 'string' ? parsed.summary : '',
-      experienceBullets: Array.isArray(parsed.experienceBullets)
-        ? parsed.experienceBullets.slice(0, 4)
-        : [],
-      skillsToHighlight: Array.isArray(parsed.skillsToHighlight)
-        ? parsed.skillsToHighlight.slice(0, 5)
-        : [],
+      skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 6) : [],
+      experience: Array.isArray(parsed.experience) ? parsed.experience.slice(0, 3) : [],
+      projects: Array.isArray(parsed.projects) ? parsed.projects.slice(0, 3) : [],
+      education: Array.isArray(parsed.education) ? parsed.education.slice(0, 2) : [],
       missingKeywords: Array.isArray(parsed.missingKeywords)
         ? parsed.missingKeywords.slice(0, 5)
         : [],
