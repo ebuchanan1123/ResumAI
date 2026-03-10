@@ -25,6 +25,103 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.post('/parse-profile', async (req, res) => {
+  try {
+    const { resumeText, existingProfile } = req.body;
+
+    if (!resumeText || resumeText.trim().length < 50) {
+      return res.status(400).json({
+        error: 'Missing or invalid resume text.',
+      });
+    }
+
+    const prompt = `
+You are an expert resume parser.
+
+Your job is to convert pasted resume text into a structured user profile.
+
+Return valid JSON only in this exact structure:
+{
+  "fullName": "string",
+  "email": "string",
+  "phone": "string",
+  "location": "string",
+  "summaryHint": "string",
+  "skills": "comma-separated string",
+  "education": [
+    {
+      "school": "string",
+      "degree": "string",
+      "fieldOfStudy": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "details": "string"
+    }
+  ],
+  "experience": [
+    {
+      "company": "string",
+      "title": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "location": "string",
+      "technologies": "string",
+      "description": "string"
+    }
+  ],
+  "projects": [
+    {
+      "name": "string",
+      "role": "string",
+      "technologies": "string",
+      "link": "string",
+      "description": "string"
+    }
+  ]
+}
+
+Rules:
+- Extract only what is supported by the pasted resume
+- Do not invent missing details
+- If something is missing, return an empty string
+- Skills should be a comma-separated string
+- Descriptions can be concise but useful
+- If existing profile data exists, prefer not to duplicate obvious repeated items
+
+Existing Profile:
+${JSON.stringify(existingProfile || {}, null, 2)}
+
+Pasted Resume:
+${resumeText}
+`;
+
+    const response = await client.responses.create({
+      model: 'gpt-5-mini',
+      input: prompt,
+    });
+
+    const text = (response.output_text || '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseError) {
+      console.error('JSON PARSE ERROR /parse-profile:', text);
+      return res.status(500).json({
+        error: 'Failed to parse imported profile.',
+      });
+    }
+
+    return res.json(parsed);
+  } catch (error) {
+    console.error('OPENAI ERROR /parse-profile:', error);
+
+    return res.status(500).json({
+      error: error?.message || 'Failed to parse profile.',
+    });
+  }
+});
+
 app.post('/generate', async (req, res) => {
   try {
     const { jobTitle, experience, tone, jobDescription } = req.body;
@@ -150,6 +247,9 @@ Rules:
 - Do not invent fake experience, fake metrics, or fake technologies
 - Use only information that is supported by the profile
 - Prioritize the most relevant experience and projects for the role
+- For student or internship roles, prioritize relevant projects over unrelated work experience when appropriate
+- Keep education near the top when it is relevant to the role
+- Select the most relevant experience and projects instead of trying to include everything
 - Write strong bullet points starting with action verbs
 - For skills, return the most relevant skills for this role
 - Keep the tone: ${tone || 'Technical'}

@@ -22,10 +22,14 @@ import {
   type UserProfile,
 } from '@/lib/profileStorage';
 
+import { API_URL } from '@/config/api';
+
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile>(createEmptyProfile());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resumeImportText, setResumeImportText] = useState('');
+  const [importingProfile, setImportingProfile] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -41,6 +45,122 @@ export default function ProfileScreen() {
 
     loadProfile();
   }, []);
+
+  const mergeCommaSeparated = (a: string, b: string) => {
+    const items = [...a.split(','), ...b.split(',')]
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    const unique = Array.from(new Set(items.map((item) => item.toLowerCase())));
+
+    return unique
+        .map((lower) => items.find((item) => item.toLowerCase() === lower) || lower)
+        .join(', ');
+    };
+
+    const mergeEducation = (current: UserProfile['education'], incoming: UserProfile['education']) => {
+    const merged = [...current];
+
+    incoming.forEach((item) => {
+        const exists = merged.some(
+        (existing) =>
+            existing.school.trim().toLowerCase() === item.school.trim().toLowerCase() &&
+            existing.degree.trim().toLowerCase() === item.degree.trim().toLowerCase()
+        );
+
+        if (!exists) {
+        merged.push(item);
+        }
+    });
+
+    return merged;
+    };
+
+    const mergeExperience = (
+    current: UserProfile['experience'],
+    incoming: UserProfile['experience']
+    ) => {
+    const merged = [...current];
+
+    incoming.forEach((item) => {
+        const exists = merged.some(
+        (existing) =>
+            existing.company.trim().toLowerCase() === item.company.trim().toLowerCase() &&
+            existing.title.trim().toLowerCase() === item.title.trim().toLowerCase()
+        );
+
+        if (!exists) {
+        merged.push(item);
+        }
+    });
+
+    return merged;
+    };
+
+    const mergeProjects = (current: UserProfile['projects'], incoming: UserProfile['projects']) => {
+    const merged = [...current];
+
+    incoming.forEach((item) => {
+        const exists = merged.some(
+        (existing) => existing.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+        );
+
+        if (!exists) {
+        merged.push(item);
+        }
+    });
+
+    return merged;
+    };
+
+    const importFromResumeText = async () => {
+    if (resumeImportText.trim().length < 50) {
+        Alert.alert('Error', 'Please paste a longer resume first.');
+        return;
+    }
+
+    try {
+        setImportingProfile(true);
+
+        const res = await fetch(`${API_URL}/parse-profile`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            resumeText: resumeImportText,
+            existingProfile: profile,
+        }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+        throw new Error(data.error || 'Failed to import profile.');
+        }
+
+        const mergedProfile: UserProfile = {
+        ...profile,
+        fullName: profile.fullName || data.fullName || '',
+        email: profile.email || data.email || '',
+        phone: profile.phone || data.phone || '',
+        location: profile.location || data.location || '',
+        summaryHint: profile.summaryHint || data.summaryHint || '',
+        skills: mergeCommaSeparated(profile.skills || '', data.skills || ''),
+        education: mergeEducation(profile.education, data.education || []),
+        experience: mergeExperience(profile.experience, data.experience || []),
+        projects: mergeProjects(profile.projects, data.projects || []),
+        };
+
+        setProfile(mergedProfile);
+        setResumeImportText('');
+        Alert.alert('Imported', 'Resume content was merged into your profile. Save your profile to keep it.');
+    } catch (err: any) {
+        Alert.alert('Error', err.message || 'Failed to import profile.');
+    } finally {
+        setImportingProfile(false);
+    }
+  };
 
   const updateField = (field: keyof UserProfile, value: string) => {
     setProfile((prev) => ({
@@ -203,6 +323,34 @@ export default function ProfileScreen() {
           <Text style={styles.subtitle}>
             Add your full background here. This can be more detailed than a normal resume.
           </Text>
+
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Import From Pasted Resume</Text>
+            <Text style={styles.statusText}>
+                Paste an existing resume below and ResumAI will extract profile information and merge it into your current profile.
+            </Text>
+
+            <TextInput
+                style={[styles.input, styles.largeTextArea, { marginTop: 12 }]}
+                multiline
+                value={resumeImportText}
+                onChangeText={setResumeImportText}
+                placeholder="Paste your existing resume here..."
+                placeholderTextColor="#8C8C8C"
+                textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+                style={[styles.primaryButton, importingProfile && styles.disabledButton]}
+                onPress={importFromResumeText}
+                disabled={importingProfile}
+            >
+                <Text style={styles.primaryButtonText}>
+                {importingProfile ? 'Importing...' : 'Import Into Profile'}
+                </Text>
+            </TouchableOpacity>
+            </View>
+
 
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Basic Info</Text>
@@ -569,6 +717,13 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 24,
   },
+
+  statusText: {
+    color: '#A3A3A3',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  
   sectionCard: {
     backgroundColor: '#0C0C0C',
     borderWidth: 1,
