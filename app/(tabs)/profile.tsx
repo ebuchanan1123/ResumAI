@@ -25,6 +25,8 @@ import {
 } from '@/lib/profileStorage';
 
 type SectionOption = 'experience' | 'project' | 'education' | 'certification';
+type ExpandedPanel = 'basic' | 'summary' | 'import' | `item:${string}` | null;
+type CollectionSectionKey = 'experience' | 'projects' | 'education' | 'certifications';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile>(createEmptyProfile());
@@ -33,12 +35,13 @@ export default function ProfileScreen() {
   const [importingProfile, setImportingProfile] = useState(false);
 
   const [resumeImportText, setResumeImportText] = useState('');
-
-  const [expandedBasicInfo, setExpandedBasicInfo] = useState(true);
-  const [expandedSummarySkills, setExpandedSummarySkills] = useState(false);
-  const [expandedImport, setExpandedImport] = useState(false);
-  const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
-  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>('basic');
+  const [expandedSections, setExpandedSections] = useState<Record<CollectionSectionKey, boolean>>({
+    experience: false,
+    projects: false,
+    education: false,
+    certifications: false,
+  });
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -71,8 +74,29 @@ export default function ProfileScreen() {
     return 'Very complete';
   }, [profile]);
 
+  const dashboardStats = useMemo(
+    () => [
+      { label: 'Experience', value: profile.experience.length },
+      { label: 'Projects', value: profile.projects.length },
+      { label: 'Education', value: profile.education.length },
+      { label: 'Certs', value: profile.certifications.length },
+    ],
+    [profile]
+  );
+
+  const togglePanel = (panel: ExpandedPanel) => {
+    setExpandedPanel((prev) => (prev === panel ? null : panel));
+  };
+
+  const toggleSection = (section: CollectionSectionKey) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
   const toggleItem = (key: string) => {
-    setExpandedItemKey((prev) => (prev === key ? null : key));
+    togglePanel(`item:${key}`);
   };
 
   const updateField = (field: keyof UserProfile, value: string) => {
@@ -157,7 +181,8 @@ export default function ProfileScreen() {
         ...prev,
         experience: [...prev.experience, createEmptyExperience()],
       }));
-      setExpandedItemKey(`experience-${newIndex}`);
+      setExpandedSections((prev) => ({ ...prev, experience: true }));
+      setExpandedPanel(`item:experience-${newIndex}`);
     }
 
     if (type === 'project') {
@@ -166,7 +191,8 @@ export default function ProfileScreen() {
         ...prev,
         projects: [...prev.projects, createEmptyProject()],
       }));
-      setExpandedItemKey(`project-${newIndex}`);
+      setExpandedSections((prev) => ({ ...prev, projects: true }));
+      setExpandedPanel(`item:project-${newIndex}`);
     }
 
     if (type === 'education') {
@@ -175,7 +201,8 @@ export default function ProfileScreen() {
         ...prev,
         education: [...prev.education, createEmptyEducation()],
       }));
-      setExpandedItemKey(`education-${newIndex}`);
+      setExpandedSections((prev) => ({ ...prev, education: true }));
+      setExpandedPanel(`item:education-${newIndex}`);
     }
 
     if (type === 'certification') {
@@ -184,10 +211,9 @@ export default function ProfileScreen() {
         ...prev,
         certifications: [...prev.certifications, createEmptyCertification()],
       }));
-      setExpandedItemKey(`certification-${newIndex}`);
+      setExpandedSections((prev) => ({ ...prev, certifications: true }));
+      setExpandedPanel(`item:certification-${newIndex}`);
     }
-
-    setShowAddMenu(false);
   };
 
   const removeEducation = (index: number) => {
@@ -195,7 +221,7 @@ export default function ProfileScreen() {
         ...prev,
         education: prev.education.filter((_, i) => i !== index),
     }));
-    setExpandedItemKey(null);
+    setExpandedPanel(null);
   };
 
   const removeExperience = (index: number) => {
@@ -203,7 +229,7 @@ export default function ProfileScreen() {
         ...prev,
         experience: prev.experience.filter((_, i) => i !== index),
     }));
-    setExpandedItemKey(null);
+    setExpandedPanel(null);
   };
 
   const removeProject = (index: number) => {
@@ -211,7 +237,7 @@ export default function ProfileScreen() {
         ...prev,
         projects: prev.projects.filter((_, i) => i !== index),
     }));
-    setExpandedItemKey(null);
+    setExpandedPanel(null);
   };
 
   const removeCertification = (index: number) => {
@@ -219,7 +245,7 @@ export default function ProfileScreen() {
       ...prev,
       certifications: prev.certifications.filter((_, i) => i !== index),
     }));
-    setExpandedItemKey(null);
+    setExpandedPanel(null);
   };
 
   const saveProfile = async () => {
@@ -245,11 +271,13 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: () => {
             setProfile(createEmptyProfile());
-            setExpandedItemKey(null);
-            setExpandedBasicInfo(true);
-            setExpandedSummarySkills(false);
-            setExpandedImport(false);
-            setShowAddMenu(false);
+            setExpandedPanel('basic');
+            setExpandedSections({
+              experience: false,
+              projects: false,
+              education: false,
+              certifications: false,
+            });
           },
         },
       ]
@@ -416,6 +444,9 @@ export default function ProfileScreen() {
   const renderCollapsedMeta = (parts: (string | undefined)[]) =>
     parts.filter((part) => part && part.trim()).join(' • ');
 
+  const renderCountLabel = (count: number, singular: string, plural = `${singular}s`) =>
+    `${count} ${count === 1 ? singular : plural}`;
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -446,124 +477,52 @@ export default function ProfileScreen() {
             tailor stronger applications later.
           </Text>
 
-          
-
-          <TouchableOpacity
-            style={styles.compactCard}
-            onPress={() => setExpandedBasicInfo((prev) => !prev)}
-          >
-            <View style={styles.compactCardHeader}>
-              <View>
-                <Text style={styles.compactCardTitle}>Basic Info</Text>
-                <Text style={styles.compactCardSubtitle}>
-                  {profile.fullName || 'Your name'}
-                  {profile.email ? ` • ${profile.email}` : ''}
-                </Text>
-              </View>
-              <Text style={styles.expandText}>{expandedBasicInfo ? 'Hide' : 'Edit'}</Text>
+          <View style={styles.overviewCard}>
+            <View style={styles.overviewMain}>
+              <Text style={styles.overviewEyebrow}>Profile Dashboard</Text>
+              <Text style={styles.overviewTitle}>
+                {profile.fullName || 'Start building your profile'}
+              </Text>
+              <Text style={styles.overviewText}>
+                {profileCompletionText} with {renderCountLabel(profile.experience.length, 'role')},{' '}
+                {renderCountLabel(profile.projects.length, 'project')}, and{' '}
+                {renderCountLabel(profile.education.length, 'education entry')}.
+              </Text>
             </View>
-
-            {expandedBasicInfo && (
-              <View style={styles.expandedSection}>
-                <Text style={styles.label}>Full Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={profile.fullName}
-                  onChangeText={(value) => updateField('fullName', value)}
-                  placeholder="e.g. Evan Buchanan"
-                  placeholderTextColor="#8C8C8C"
-                />
-
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  value={profile.email}
-                  onChangeText={(value) => updateField('email', value)}
-                  placeholder="e.g. ebuchanan1123@gmail.com"
-                  placeholderTextColor="#8C8C8C"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-
-                <Text style={styles.label}>Phone</Text>
-                <TextInput
-                  style={styles.input}
-                  value={profile.phone}
-                  onChangeText={(value) => updateField('phone', value)}
-                  placeholder="e.g. (647) 355-6678"
-                  placeholderTextColor="#8C8C8C"
-                />
-
-                <Text style={styles.label}>Address</Text>
-                <TextInput
-                  style={styles.input}
-                  value={profile.location}
-                  onChangeText={(value) => updateField('location', value)}
-                  placeholder="e.g. Ottawa, Ontario"
-                  placeholderTextColor="#8C8C8C"
-                />
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.compactCard}
-            onPress={() => setExpandedSummarySkills((prev) => !prev)}
-          >
-            <View style={styles.compactCardHeader}>
-              <View>
-                <Text style={styles.compactCardTitle}>Summary & Skills</Text>
-                <Text style={styles.compactCardSubtitle}>
-                  {profile.skills
-                    ? profile.skills.split(',').slice(0, 4).join(', ')
-                    : 'No skills added yet'}
-                </Text>
-              </View>
-              <Text style={styles.expandText}>{expandedSummarySkills ? 'Hide' : 'Edit'}</Text>
+            <View style={styles.overviewBadge}>
+              <Text style={styles.overviewBadgeNumber}>
+                {dashboardStats.reduce((sum, item) => sum + item.value, 0)}
+              </Text>
+              <Text style={styles.overviewBadgeLabel}>Saved items</Text>
             </View>
+          </View>
 
-            {expandedSummarySkills && (
-              <View style={styles.expandedSection}>
-                <Text style={styles.label}>Skills</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  multiline
-                  value={profile.skills}
-                  onChangeText={(value) => updateField('skills', value)}
-                  placeholder="e.g. JavaScript, TypeScript, React, Node.js, PostgreSQL, Git"
-                  placeholderTextColor="#8C8C8C"
-                  textAlignVertical="top"
-                />
-
-                <Text style={styles.label}>Summary Notes</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  multiline
-                  value={profile.summaryHint}
-                  onChangeText={(value) => updateField('summaryHint', value)}
-                  placeholder="Add extra context about your strengths, goals, industries, or the type of work you want."
-                  placeholderTextColor="#8C8C8C"
-                  textAlignVertical="top"
-                />
+          <View style={styles.statsRow}>
+            {dashboardStats.map((item) => (
+              <View key={item.label} style={styles.statChip}>
+                <Text style={styles.statChipValue}>{item.value}</Text>
+                <Text style={styles.statChipLabel}>{item.label}</Text>
               </View>
-            )}
-          </TouchableOpacity>
+            ))}
+          </View>
 
-          <TouchableOpacity
-            style={styles.compactCard}
-            onPress={() => setExpandedImport((prev) => !prev)}
-          >
-            <View style={styles.compactCardHeader}>
-              <View>
-                <Text style={styles.compactCardTitle}>Import From Pasted Resume</Text>
-                <Text style={styles.compactCardSubtitle}>
-                  Paste an existing resume and merge it into your profile
-                </Text>
+          <View style={styles.compactCard}>
+            <TouchableOpacity
+              style={styles.compactCardHeaderButton}
+              onPress={() => togglePanel('import')}
+            >
+              <View style={styles.compactCardHeader}>
+                <View>
+                  <Text style={styles.compactCardTitle}>Import From Pasted Resume</Text>
+                  <Text style={styles.compactCardSubtitle}>
+                    Paste an existing resume and merge it into your profile
+                  </Text>
+                </View>
+                <Text style={styles.expandText}>{expandedPanel === 'import' ? 'Hide' : 'Open'}</Text>
               </View>
-              <Text style={styles.expandText}>{expandedImport ? 'Hide' : 'Open'}</Text>
-            </View>
+            </TouchableOpacity>
 
-            {expandedImport && (
+            {expandedPanel === 'import' && (
               <View style={styles.expandedSection}>
                 <TextInput
                   style={[styles.input, styles.largeTextArea]}
@@ -586,9 +545,157 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
             )}
-          </TouchableOpacity>
+          </View>
 
-          <Text style={styles.groupHeading}>Experience</Text>
+          <View style={styles.sectionShell}>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.groupHeading}>Core Profile</Text>
+                <Text style={styles.groupCaption}>Personal details, strengths, and resume import</Text>
+              </View>
+            </View>
+            <View style={styles.compactCard}>
+              <TouchableOpacity
+                style={styles.compactCardHeaderButton}
+                onPress={() => togglePanel('basic')}
+              >
+                <View style={styles.compactCardHeader}>
+                  <View>
+                    <Text style={styles.compactCardTitle}>Basic Info</Text>
+                    <Text style={styles.compactCardSubtitle}>
+                      {profile.fullName || 'Your name'}
+                      {profile.email ? ` • ${profile.email}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.expandText}>{expandedPanel === 'basic' ? 'Hide' : 'Edit'}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {expandedPanel === 'basic' && (
+                <View style={styles.expandedSection}>
+                <Text style={styles.label}>Full Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.fullName}
+                  onChangeText={(value) => updateField('fullName', value)}
+                  placeholder="e.g. John Doe"
+                  placeholderTextColor="#8C8C8C"
+                />
+
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.email}
+                  onChangeText={(value) => updateField('email', value)}
+                  placeholder="e.g. johndoe123@gmail.com"
+                  placeholderTextColor="#8C8C8C"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+
+                <Text style={styles.label}>Phone</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.phone}
+                  onChangeText={(value) => updateField('phone', value)}
+                  placeholder="e.g. (123) 456-7890"
+                  placeholderTextColor="#8C8C8C"
+                />
+
+                <Text style={styles.label}>Address</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.location}
+                  onChangeText={(value) => updateField('location', value)}
+                  placeholder="e.g. Toronto, Ontario, Canada"
+                  placeholderTextColor="#8C8C8C"
+                />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.compactCard}>
+              <TouchableOpacity
+                style={styles.compactCardHeaderButton}
+                onPress={() => togglePanel('summary')}
+              >
+                <View style={styles.compactCardHeader}>
+                  <View>
+                    <Text style={styles.compactCardTitle}>Summary & Skills</Text>
+                    <Text style={styles.compactCardSubtitle}>
+                      {profile.skills
+                        ? profile.skills.split(',').slice(0, 4).join(', ')
+                        : 'No skills added yet'}
+                    </Text>
+                  </View>
+                  <Text style={styles.expandText}>{expandedPanel === 'summary' ? 'Hide' : 'Edit'}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {expandedPanel === 'summary' && (
+                <View style={styles.expandedSection}>
+                <Text style={styles.label}>Skills</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  multiline
+                  value={profile.skills}
+                  onChangeText={(value) => updateField('skills', value)}
+                  placeholder="e.g. JavaScript, TypeScript, React, Node.js, PostgreSQL, Git"
+                  placeholderTextColor="#8C8C8C"
+                  textAlignVertical="top"
+                />
+
+                <Text style={styles.label}>Summary Notes</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  multiline
+                  value={profile.summaryHint}
+                  onChangeText={(value) => updateField('summaryHint', value)}
+                  placeholder="Add extra context about your strengths, goals, industries, or the type of work you want."
+                  placeholderTextColor="#8C8C8C"
+                  textAlignVertical="top"
+                />
+                </View>
+              )}
+            </View>
+
+          </View>
+
+          <View style={styles.addActionsCard}>
+            <Text style={styles.addActionsTitle}>Add section</Text>
+            <Text style={styles.addActionsSubtitle}>Create a new profile entry in one tap</Text>
+            <View style={styles.addActionsGrid}>
+              <TouchableOpacity style={styles.addActionButton} onPress={() => addSection('experience')}>
+                <Text style={styles.addActionButtonText}>+ Experience</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addActionButton} onPress={() => addSection('project')}>
+                <Text style={styles.addActionButtonText}>+ Project</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addActionButton} onPress={() => addSection('education')}>
+                <Text style={styles.addActionButtonText}>+ Education</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addActionButton} onPress={() => addSection('certification')}>
+                <Text style={styles.addActionButtonText}>+ Certification</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.sectionShell}>
+          <TouchableOpacity
+            style={styles.collectionSectionHeader}
+            onPress={() => toggleSection('experience')}
+          >
+            <View>
+              <Text style={styles.groupHeading}>Experience</Text>
+              <Text style={styles.groupCaption}>Roles, internships, part-time work, and impact</Text>
+            </View>
+            <View style={styles.collectionSectionMeta}>
+              <Text style={styles.sectionCount}>{renderCountLabel(profile.experience.length, 'entry')}</Text>
+              <Text style={styles.expandText}>{expandedSections.experience ? 'Hide' : 'Show'}</Text>
+            </View>
+          </TouchableOpacity>
+          {expandedSections.experience && (
+            <>
             {profile.experience.length === 0 ? (
             <View style={styles.emptyMiniCard}>
                 <Text style={styles.emptyMiniCardText}>No experience added yet.</Text>
@@ -596,27 +703,31 @@ export default function ProfileScreen() {
             ) : (
             profile.experience.map((item, index) => {
                 const key = `experience-${index}`;
-                const expanded = expandedItemKey === key;
+                const expanded = expandedPanel === `item:${key}`;
 
                 return (
-                <TouchableOpacity
+                <View
                     key={key}
                     style={styles.compactCard}
-                    activeOpacity={0.95}
-                    onPress={() => toggleItem(key)}
                 >
-                    <View style={styles.compactCardHeader}>
-                    <View style={styles.compactCardTextWrap}>
-                        <Text style={styles.compactCardTitle}>{item.title}</Text>
-                        <Text style={styles.compactCardSubtitle}>
-                        {renderCollapsedMeta([
-                            item.company,
-                            `${item.startDate || 'Start'} - ${item.endDate || 'End'}`,
-                        ])}
-                        </Text>
-                    </View>
-                    <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.compactCardHeaderButton}
+                      activeOpacity={0.95}
+                      onPress={() => toggleItem(key)}
+                    >
+                      <View style={styles.compactCardHeader}>
+                      <View style={styles.compactCardTextWrap}>
+                          <Text style={styles.compactCardTitle}>{item.title || 'Untitled Role'}</Text>
+                          <Text style={styles.compactCardSubtitle}>
+                          {renderCollapsedMeta([
+                              item.company,
+                              `${item.startDate || 'Start'} - ${item.endDate || 'End'}`,
+                          ]) || 'No details yet'}
+                          </Text>
+                      </View>
+                      <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
+                      </View>
+                    </TouchableOpacity>
 
                     {expanded && (
                     <View style={styles.expandedSection}>
@@ -693,12 +804,30 @@ export default function ProfileScreen() {
                         />
                     </View>
                     )}
-                </TouchableOpacity>
+                </View>
                 );
             })
             )}
+            </>
+          )}
+          </View>
 
-          <Text style={styles.groupHeading}>Projects</Text>
+          <View style={styles.sectionShell}>
+          <TouchableOpacity
+            style={styles.collectionSectionHeader}
+            onPress={() => toggleSection('projects')}
+          >
+            <View>
+              <Text style={styles.groupHeading}>Projects</Text>
+              <Text style={styles.groupCaption}>Personal builds, course work, and shipped ideas</Text>
+            </View>
+            <View style={styles.collectionSectionMeta}>
+              <Text style={styles.sectionCount}>{renderCountLabel(profile.projects.length, 'entry')}</Text>
+              <Text style={styles.expandText}>{expandedSections.projects ? 'Hide' : 'Show'}</Text>
+            </View>
+          </TouchableOpacity>
+          {expandedSections.projects && (
+            <>
           {profile.projects.length === 0 ? (
             <View style={styles.emptyMiniCard}>
                 <Text style={styles.emptyMiniCardText}>No projects added yet.</Text>
@@ -706,24 +835,28 @@ export default function ProfileScreen() {
             ) : (
             profile.projects.map((item, index) => {
                 const key = `project-${index}`;
-                const expanded = expandedItemKey === key;
+                const expanded = expandedPanel === `item:${key}`;
 
                 return (
-                <TouchableOpacity
+                <View
                     key={key}
                     style={styles.compactCard}
-                    activeOpacity={0.95}
-                    onPress={() => toggleItem(key)}
                 >
-                    <View style={styles.compactCardHeader}>
-                    <View style={styles.compactCardTextWrap}>
-                        <Text style={styles.compactCardTitle}>{item.name}</Text>
-                        <Text style={styles.compactCardSubtitle}>
-                        {item.role || item.technologies || 'No details yet'}
-                        </Text>
-                    </View>
-                    <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.compactCardHeaderButton}
+                      activeOpacity={0.95}
+                      onPress={() => toggleItem(key)}
+                    >
+                      <View style={styles.compactCardHeader}>
+                      <View style={styles.compactCardTextWrap}>
+                          <Text style={styles.compactCardTitle}>{item.name || 'Untitled Project'}</Text>
+                          <Text style={styles.compactCardSubtitle}>
+                          {item.role || item.technologies || 'No details yet'}
+                          </Text>
+                      </View>
+                      <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
+                      </View>
+                    </TouchableOpacity>
 
                     {expanded && (
                     <View style={styles.expandedSection}>
@@ -783,12 +916,30 @@ export default function ProfileScreen() {
                         />
                     </View>
                     )}
-                </TouchableOpacity>
+                </View>
                 );
             })
             )}
+            </>
+          )}
+          </View>
 
-          <Text style={styles.groupHeading}>Education</Text>
+          <View style={styles.sectionShell}>
+          <TouchableOpacity
+            style={styles.collectionSectionHeader}
+            onPress={() => toggleSection('education')}
+          >
+            <View>
+              <Text style={styles.groupHeading}>Education</Text>
+              <Text style={styles.groupCaption}>Schools, degrees, coursework, and academic context</Text>
+            </View>
+            <View style={styles.collectionSectionMeta}>
+              <Text style={styles.sectionCount}>{renderCountLabel(profile.education.length, 'entry')}</Text>
+              <Text style={styles.expandText}>{expandedSections.education ? 'Hide' : 'Show'}</Text>
+            </View>
+          </TouchableOpacity>
+          {expandedSections.education && (
+            <>
             {profile.education.length === 0 ? (
             <View style={styles.emptyMiniCard}>
                 <Text style={styles.emptyMiniCardText}>No education added yet.</Text>
@@ -796,28 +947,32 @@ export default function ProfileScreen() {
             ) : (
             profile.education.map((item, index) => {
                 const key = `education-${index}`;
-                const expanded = expandedItemKey === key;
+                const expanded = expandedPanel === `item:${key}`;
 
                 return (
-                <TouchableOpacity
+                <View
                     key={key}
                     style={styles.compactCard}
-                    activeOpacity={0.95}
-                    onPress={() => toggleItem(key)}
                 >
-                    <View style={styles.compactCardHeader}>
-                    <View style={styles.compactCardTextWrap}>
-                        <Text style={styles.compactCardTitle}>{item.school}</Text>
-                        <Text style={styles.compactCardSubtitle}>
-                        {renderCollapsedMeta([
-                            item.degree,
-                            item.fieldOfStudy,
-                            `${item.startDate || 'Start'} - ${item.endDate || 'End'}`,
-                        ]) || 'No details yet'}
-                        </Text>
-                    </View>
-                    <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.compactCardHeaderButton}
+                      activeOpacity={0.95}
+                      onPress={() => toggleItem(key)}
+                    >
+                      <View style={styles.compactCardHeader}>
+                      <View style={styles.compactCardTextWrap}>
+                          <Text style={styles.compactCardTitle}>{item.school || 'Untitled Education'}</Text>
+                          <Text style={styles.compactCardSubtitle}>
+                          {renderCollapsedMeta([
+                              item.degree,
+                              item.fieldOfStudy,
+                              `${item.startDate || 'Start'} - ${item.endDate || 'End'}`,
+                          ]) || 'No details yet'}
+                          </Text>
+                      </View>
+                      <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
+                      </View>
+                    </TouchableOpacity>
 
                     {expanded && (
                     <View style={styles.expandedSection}>
@@ -885,12 +1040,32 @@ export default function ProfileScreen() {
                         />
                     </View>
                     )}
-                </TouchableOpacity>
+                </View>
                 );
             })
             )}
+            </>
+          )}
+          </View>
 
-          <Text style={styles.groupHeading}>Certifications</Text>
+          <View style={styles.sectionShell}>
+          <TouchableOpacity
+            style={styles.collectionSectionHeader}
+            onPress={() => toggleSection('certifications')}
+          >
+            <View>
+              <Text style={styles.groupHeading}>Certifications</Text>
+              <Text style={styles.groupCaption}>Credentials, licenses, and validation signals</Text>
+            </View>
+            <View style={styles.collectionSectionMeta}>
+              <Text style={styles.sectionCount}>
+                {renderCountLabel(profile.certifications.length, 'entry')}
+              </Text>
+              <Text style={styles.expandText}>{expandedSections.certifications ? 'Hide' : 'Show'}</Text>
+            </View>
+          </TouchableOpacity>
+          {expandedSections.certifications && (
+            <>
           {profile.certifications.length === 0 ? (
             <View style={styles.emptyMiniCard}>
               <Text style={styles.emptyMiniCardText}>No certifications added yet.</Text>
@@ -898,30 +1073,34 @@ export default function ProfileScreen() {
           ) : (
             profile.certifications.map((item, index) => {
               const key = `certification-${index}`;
-              const expanded = expandedItemKey === key;
+              const expanded = expandedPanel === `item:${key}`;
 
               return (
-                <TouchableOpacity
+                <View
                   key={key}
                   style={styles.compactCard}
-                  activeOpacity={0.95}
-                  onPress={() => toggleItem(key)}
                 >
-                  <View style={styles.compactCardHeader}>
-                    <View style={styles.compactCardTextWrap}>
-                      <Text style={styles.compactCardTitle}>
-                        {item.name || 'Untitled Certification'}
-                      </Text>
-                      <Text style={styles.compactCardSubtitle}>
-                        {renderCollapsedMeta([
-                          item.issuer,
-                          item.issueDate,
-                          item.expiryDate ? `Expires ${item.expiryDate}` : undefined,
-                        ]) || 'No details yet'}
-                      </Text>
+                  <TouchableOpacity
+                    style={styles.compactCardHeaderButton}
+                    activeOpacity={0.95}
+                    onPress={() => toggleItem(key)}
+                  >
+                    <View style={styles.compactCardHeader}>
+                      <View style={styles.compactCardTextWrap}>
+                        <Text style={styles.compactCardTitle}>
+                          {item.name || 'Untitled Certification'}
+                        </Text>
+                        <Text style={styles.compactCardSubtitle}>
+                          {renderCollapsedMeta([
+                            item.issuer,
+                            item.issueDate,
+                            item.expiryDate ? `Expires ${item.expiryDate}` : undefined,
+                          ]) || 'No details yet'}
+                        </Text>
+                      </View>
+                      <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
                     </View>
-                    <Text style={styles.expandText}>{expanded ? 'Hide' : 'Edit'}</Text>
-                  </View>
+                  </TouchableOpacity>
 
                   {expanded && (
                     <View style={styles.expandedSection}>
@@ -1001,52 +1180,12 @@ export default function ProfileScreen() {
                       />
                     </View>
                   )}
-                </TouchableOpacity>
+                </View>
               );
             })
           )}
-
-          <View style={styles.addSectionWrap}>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => setShowAddMenu((prev) => !prev)}
-            >
-              <Text style={styles.primaryButtonText}>
-                {showAddMenu ? 'Close Add Menu' : 'Add Section'}
-              </Text>
-            </TouchableOpacity>
-
-            {showAddMenu && (
-              <View style={styles.addMenu}>
-                <TouchableOpacity
-                  style={styles.addMenuItem}
-                  onPress={() => addSection('experience')}
-                >
-                  <Text style={styles.addMenuItemText}>Add Work Experience</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.addMenuItem}
-                  onPress={() => addSection('project')}
-                >
-                  <Text style={styles.addMenuItemText}>Add Project</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.addMenuItem}
-                  onPress={() => addSection('education')}
-                >
-                  <Text style={styles.addMenuItemText}>Add Education</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.addMenuItem}
-                  onPress={() => addSection('certification')}
-                >
-                  <Text style={styles.addMenuItemText}>Add Certification</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+          </>
+          )}
           </View>
 
           <TouchableOpacity
@@ -1122,6 +1261,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
     },
+    overviewMain: {
+    flex: 1,
+    paddingRight: 12,
+    },
+    overviewEyebrow: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    },
     overviewTitle: {
     color: '#1E293B',
     fontSize: 18,
@@ -1131,6 +1282,63 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 14,
     marginTop: 4,
+    },
+    overviewBadge: {
+    minWidth: 96,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    },
+    overviewBadgeNumber: {
+    color: '#1D4ED8',
+    fontSize: 28,
+    fontWeight: '800',
+    },
+    overviewBadgeLabel: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+    },
+    statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+    gap: 8,
+    },
+    statChip: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    minWidth: '23%',
+    },
+    statChipValue: {
+    color: '#1E293B',
+    fontSize: 18,
+    fontWeight: '800',
+    },
+    statChipLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    },
+    sectionShell: {
+    marginBottom: 16,
+    },
+    sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 10,
+    gap: 12,
     },
     compactCard: {
     backgroundColor: '#FFFFFF',
@@ -1149,6 +1357,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    },
+    compactCardHeaderButton: {
+    borderRadius: 12,
     },
     compactCardTextWrap: {
     flex: 1,
@@ -1178,10 +1389,30 @@ const styles = StyleSheet.create({
     },
     groupHeading: {
     color: '#1E293B',
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '800',
-    marginTop: 10,
+    },
+    groupCaption: {
+    color: '#64748B',
+    fontSize: 14,
+    marginTop: 4,
+    },
+    sectionCount: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '700',
+    },
+    collectionSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 12,
     marginBottom: 10,
+    paddingVertical: 4,
+    },
+    collectionSectionMeta: {
+    alignItems: 'flex-end',
+    gap: 4,
     },
     label: {
     color: '#1E293B',
@@ -1220,27 +1451,41 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 14,
     },
-    addSectionWrap: {
-    marginTop: 8,
-    marginBottom: 4,
-    },
-    addMenu: {
+    addActionsCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 18,
-    marginTop: 10,
-    overflow: 'hidden',
+    padding: 16,
+    marginBottom: 16,
     },
-    addMenuItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    },
-    addMenuItemText: {
+    addActionsTitle: {
     color: '#1E293B',
-    fontSize: 15,
+    fontSize: 17,
+    fontWeight: '800',
+    },
+    addActionsSubtitle: {
+    color: '#64748B',
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 14,
+    },
+    addActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    },
+    addActionButton: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    },
+    addActionButtonText: {
+    color: '#1D4ED8',
+    fontSize: 14,
     fontWeight: '600',
     },
     primaryButton: {

@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   findNodeHandle,
   KeyboardAvoidingView,
   Platform,
@@ -14,11 +13,16 @@ import {
   TouchableOpacity,
   UIManager,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 import { API_URL } from '@/config/api';
+import {
+  consumeDailyUsage,
+  getDailyUsage,
+  getLimitReachedMessage,
+  releaseDailyUsage,
+} from '@/lib/rateLimits';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
 
@@ -29,9 +33,6 @@ export default function HomeScreen() {
   const [tone, setTone] = useState<Tone>('Technical');
   const [bullets, setBullets] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const splashOpacity = useRef(new Animated.Value(1)).current;
-  const mainOpacity = useRef(new Animated.Value(0)).current;
 
   const scrollViewRef = useRef<ScrollView | null>(null);
   const bulletRefs = useRef<Record<number, View | null>>({});
@@ -44,7 +45,17 @@ export default function HomeScreen() {
       return;
     }
 
+    const usage = await getDailyUsage('bullet_generation');
+    if (usage.remaining === 0) {
+      Alert.alert('Daily limit reached', getLimitReachedMessage('bullet generations'));
+      return;
+    }
+
+    let usageConsumed = false;
+
     try {
+      await consumeDailyUsage('bullet_generation');
+      usageConsumed = true;
       setLoading(true);
       setBullets([]);
 
@@ -73,6 +84,9 @@ export default function HomeScreen() {
         scrollViewRef.current?.scrollTo({ y: 700, animated: true });
       }, 250);
     } catch (err: any) {
+      if (usageConsumed) {
+        await releaseDailyUsage('bullet_generation');
+      }
       Alert.alert('Error', err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
@@ -85,7 +99,17 @@ export default function HomeScreen() {
       return;
     }
 
+    const usage = await getDailyUsage('bullet_generation');
+    if (usage.remaining === 0) {
+      Alert.alert('Daily limit reached', getLimitReachedMessage('bullet generations'));
+      return;
+    }
+
+    let usageConsumed = false;
+
     try {
+      await consumeDailyUsage('bullet_generation');
+      usageConsumed = true;
       const res = await fetch(`${API_URL}/generate`, {
         method: 'POST',
         headers: {
@@ -114,6 +138,9 @@ export default function HomeScreen() {
       updated[index] = newBullets[index] || newBullets[0];
       setBullets(updated);
     } catch (err: any) {
+      if (usageConsumed) {
+        await releaseDailyUsage('bullet_generation');
+      }
       Alert.alert('Error', err.message || 'Failed to regenerate bullet.');
     }
   };

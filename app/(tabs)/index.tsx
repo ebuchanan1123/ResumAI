@@ -22,11 +22,25 @@ import {
   saveResumeVersions,
   type SavedResumeVersion,
 } from '@/lib/resumeStorage';
+import {
+  consumeDailyUsage,
+  getDailyUsage,
+  getLimitReachedMessage,
+  releaseDailyUsage,
+} from '@/lib/rateLimits';
 import { API_URL } from '@/config/api';
 import { loadProfileFromStorage, type UserProfile } from '@/lib/profileStorage';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
-type ResumeStyle = 'Classic' | 'Modern' | 'Compact';
+type ResumeStyle =
+  | 'Classic'
+  | 'Modern'
+  | 'Compact'
+  | 'Executive'
+  | 'Spotlight'
+  | 'Nordic'
+  | 'Mono'
+  | 'Canvas';
 
 type TailoredResumeResponse = {
   summary: string;
@@ -72,6 +86,80 @@ type ResultSectionKey =
   | 'experience'
   | 'certifications'
   | 'keywords';
+
+const RESUME_STYLE_OPTIONS: {
+  value: ResumeStyle;
+  label: string;
+  description: string;
+  accent: string;
+  previewBackground: string;
+  previewInk: string;
+}[] = [
+  {
+    value: 'Classic',
+    label: 'Classic Serif',
+    description: 'Traditional and understated',
+    accent: '#64748B',
+    previewBackground: '#FFFFFF',
+    previewInk: '#111827',
+  },
+  {
+    value: 'Modern',
+    label: 'Modern Clean',
+    description: 'Minimal and recruiter-friendly',
+    accent: '#2563EB',
+    previewBackground: '#FFFFFF',
+    previewInk: '#0F172A',
+  },
+  {
+    value: 'Compact',
+    label: 'Compact Tight',
+    description: 'Dense layout for one-page focus',
+    accent: '#334155',
+    previewBackground: '#FFFFFF',
+    previewInk: '#0F172A',
+  },
+  {
+    value: 'Executive',
+    label: 'Executive Gold',
+    description: 'Warm, polished, and premium',
+    accent: '#B45309',
+    previewBackground: '#FFFBF5',
+    previewInk: '#14213D',
+  },
+  {
+    value: 'Spotlight',
+    label: 'Spotlight Bright',
+    description: 'Bold sections with energetic contrast',
+    accent: '#0EA5E9',
+    previewBackground: '#F8FBFF',
+    previewInk: '#0B3B66',
+  },
+  {
+    value: 'Nordic',
+    label: 'Nordic Air',
+    description: 'Cool, airy, and editorial',
+    accent: '#2A9D8F',
+    previewBackground: '#F5FAFC',
+    previewInk: '#16324F',
+  },
+  {
+    value: 'Mono',
+    label: 'Mono Type',
+    description: 'Technical and distinctive',
+    accent: '#111827',
+    previewBackground: '#FFFFFF',
+    previewInk: '#111827',
+  },
+  {
+    value: 'Canvas',
+    label: 'Canvas Creative',
+    description: 'Color-forward and expressive',
+    accent: '#F97316',
+    previewBackground: '#FFFDF8',
+    previewInk: '#6D28D9',
+  },
+];
 
 export default function ResumeScreen() {
   const { width } = useWindowDimensions();
@@ -148,7 +236,17 @@ export default function ResumeScreen() {
       return;
     }
 
+    const usage = await getDailyUsage('resume_generation');
+    if (usage.remaining === 0) {
+      Alert.alert('Daily limit reached', getLimitReachedMessage('resume generations'));
+      return;
+    }
+
+    let usageConsumed = false;
+
     try {
+      await consumeDailyUsage('resume_generation');
+      usageConsumed = true;
       setLoading(true);
       setResult(null);
 
@@ -172,6 +270,9 @@ export default function ResumeScreen() {
 
       setResult(data);
     } catch (err: any) {
+      if (usageConsumed) {
+        await releaseDailyUsage('resume_generation');
+      }
       Alert.alert('Error', err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
@@ -422,6 +523,15 @@ ${result.missingKeywords.join(', ')}
         itemSpacing: string;
         subtitleStyle: string;
         metaFontSize: string;
+        pageBackground: string;
+        accentColor: string;
+        contactColor: string;
+        sectionTitleBackground: string;
+        sectionTitlePadding: string;
+        itemTitleColor: string;
+        bulletMarkerColor: string;
+        headingBorder: string;
+        sectionTitleBorder: string;
       }
     > = {
       Classic: {
@@ -437,6 +547,15 @@ ${result.missingKeywords.join(', ')}
         itemSpacing: '10px',
         subtitleStyle: 'normal',
         metaFontSize: '10pt',
+        pageBackground: '#FFFFFF',
+        accentColor: '#000000',
+        contactColor: '#444444',
+        sectionTitleBackground: 'transparent',
+        sectionTitlePadding: '0 0 3px 0',
+        itemTitleColor: '#000000',
+        bulletMarkerColor: '#000000',
+        headingBorder: 'none',
+        sectionTitleBorder: 'none',
       },
       Modern: {
         fontFamily: 'Helvetica, Arial, sans-serif',
@@ -451,6 +570,15 @@ ${result.missingKeywords.join(', ')}
         itemSpacing: '12px',
         subtitleStyle: 'normal',
         metaFontSize: '10pt',
+        pageBackground: '#FFFFFF',
+        accentColor: '#1A1A1A',
+        contactColor: '#475569',
+        sectionTitleBackground: 'transparent',
+        sectionTitlePadding: '0',
+        itemTitleColor: '#111111',
+        bulletMarkerColor: '#2563EB',
+        headingBorder: 'none',
+        sectionTitleBorder: 'none',
       },
       Compact: {
         fontFamily: 'Arial, sans-serif',
@@ -465,6 +593,130 @@ ${result.missingKeywords.join(', ')}
         itemSpacing: '4px',
         subtitleStyle: 'italic',
         metaFontSize: '9pt',
+        pageBackground: '#FFFFFF',
+        accentColor: '#000000',
+        contactColor: '#555555',
+        sectionTitleBackground: 'transparent',
+        sectionTitlePadding: '0',
+        itemTitleColor: '#000000',
+        bulletMarkerColor: '#0F172A',
+        headingBorder: 'none',
+        sectionTitleBorder: 'none',
+      },
+      Executive: {
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        bodyFontSize: '10.8pt',
+        bodyLineHeight: '1.45',
+        textColor: '#14213D',
+        headingSize: '24pt',
+        headingWeight: '700',
+        headingColor: '#0F172A',
+        sectionSpacing: '18px',
+        sectionBorder: 'none',
+        itemSpacing: '12px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9.5pt',
+        pageBackground: '#FFFBF5',
+        accentColor: '#B45309',
+        contactColor: '#7C2D12',
+        sectionTitleBackground: '#FEF3C7',
+        sectionTitlePadding: '6px 10px',
+        itemTitleColor: '#1E3A8A',
+        bulletMarkerColor: '#B45309',
+        headingBorder: '6px solid #B45309',
+        sectionTitleBorder: '4px solid #B45309',
+      },
+      Spotlight: {
+        fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+        bodyFontSize: '11pt',
+        bodyLineHeight: '1.5',
+        textColor: '#0F172A',
+        headingSize: '25pt',
+        headingWeight: '800',
+        headingColor: '#0B3B66',
+        sectionSpacing: '18px',
+        sectionBorder: 'none',
+        itemSpacing: '12px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9.5pt',
+        pageBackground: '#F8FBFF',
+        accentColor: '#0EA5E9',
+        contactColor: '#0369A1',
+        sectionTitleBackground: '#E0F2FE',
+        sectionTitlePadding: '6px 10px',
+        itemTitleColor: '#0B3B66',
+        bulletMarkerColor: '#EC4899',
+        headingBorder: '6px solid #0EA5E9',
+        sectionTitleBorder: '4px solid #0EA5E9',
+      },
+      Nordic: {
+        fontFamily: '"Avenir Next", "Segoe UI", sans-serif',
+        bodyFontSize: '10.8pt',
+        bodyLineHeight: '1.48',
+        textColor: '#16324F',
+        headingSize: '24pt',
+        headingWeight: '800',
+        headingColor: '#16324F',
+        sectionSpacing: '18px',
+        sectionBorder: 'none',
+        itemSpacing: '12px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9.5pt',
+        pageBackground: '#F5FAFC',
+        accentColor: '#2A9D8F',
+        contactColor: '#3D5A80',
+        sectionTitleBackground: '#E0F2F1',
+        sectionTitlePadding: '6px 10px',
+        itemTitleColor: '#1D3557',
+        bulletMarkerColor: '#2A9D8F',
+        headingBorder: '6px solid #2A9D8F',
+        sectionTitleBorder: '4px solid #2A9D8F',
+      },
+      Mono: {
+        fontFamily: '"Courier New", "SFMono-Regular", monospace',
+        bodyFontSize: '10.2pt',
+        bodyLineHeight: '1.45',
+        textColor: '#111827',
+        headingSize: '22pt',
+        headingWeight: '700',
+        headingColor: '#111827',
+        sectionSpacing: '16px',
+        sectionBorder: '1px solid #111827',
+        itemSpacing: '10px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9pt',
+        pageBackground: '#FFFFFF',
+        accentColor: '#111827',
+        contactColor: '#374151',
+        sectionTitleBackground: '#F3F4F6',
+        sectionTitlePadding: '5px 8px',
+        itemTitleColor: '#111827',
+        bulletMarkerColor: '#111827',
+        headingBorder: 'none',
+        sectionTitleBorder: 'none',
+      },
+      Canvas: {
+        fontFamily: '"Gill Sans", "Trebuchet MS", sans-serif',
+        bodyFontSize: '11pt',
+        bodyLineHeight: '1.5',
+        textColor: '#1F2937',
+        headingSize: '25pt',
+        headingWeight: '800',
+        headingColor: '#7C3AED',
+        sectionSpacing: '18px',
+        sectionBorder: 'none',
+        itemSpacing: '12px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9.5pt',
+        pageBackground: '#FFFDF8',
+        accentColor: '#F97316',
+        contactColor: '#7C2D12',
+        sectionTitleBackground: '#FFEDD5',
+        sectionTitlePadding: '6px 10px',
+        itemTitleColor: '#6D28D9',
+        bulletMarkerColor: '#F97316',
+        headingBorder: '6px solid #F97316',
+        sectionTitleBorder: '4px solid #F97316',
       },
     };
 
@@ -496,6 +748,7 @@ ${result.missingKeywords.join(', ')}
         color: ${currentStyle.textColor};
         font-size: ${currentStyle.bodyFontSize};
         line-height: ${currentStyle.bodyLineHeight};
+        background: ${currentStyle.pageBackground};
       }
 
       .section-heading-block,
@@ -516,12 +769,14 @@ ${result.missingKeywords.join(', ')}
         font-weight: ${currentStyle.headingWeight};
         color: ${currentStyle.headingColor};
         margin: 0 0 4px 0;
+        ${currentStyle.headingBorder !== 'none' ? `border-left: ${currentStyle.headingBorder}; padding-left: 12px;` : ''}
       }
 
       .contact {
         font-size: 11px;
-        color: #444;
+        color: ${currentStyle.contactColor};
         margin-bottom: 16px;
+        padding-left: 18px;
       }
 
       .section-title {
@@ -532,6 +787,9 @@ ${result.missingKeywords.join(', ')}
         letter-spacing: 0.4px;
         break-after: avoid;
         page-break-after: avoid;
+        background: ${currentStyle.sectionTitleBackground};
+        padding: ${currentStyle.sectionTitlePadding};
+        ${currentStyle.sectionTitleBorder !== 'none' ? `border-left: ${currentStyle.sectionTitleBorder};` : ''}
         ${currentStyle.sectionBorder !== 'none' ? `border-bottom: ${currentStyle.sectionBorder}; padding-bottom: 3px;` : ''}
       }
 
@@ -541,6 +799,7 @@ ${result.missingKeywords.join(', ')}
 
       .item-title {
         font-weight: 700;
+        color: ${currentStyle.itemTitleColor};
       }
 
       .item-subtitle {
@@ -561,6 +820,10 @@ ${result.missingKeywords.join(', ')}
 
       li {
         margin-bottom: 4px;
+      }
+
+      li::marker {
+        color: ${currentStyle.bulletMarkerColor};
       }
 
       .para {
@@ -753,10 +1016,55 @@ ${result.missingKeywords.join(', ')}
       const html = buildResumeHtml();
 
       if (Platform.OS === 'web') {
-        const html2pdf = (await import('html2pdf.js')).default;
-        const container = document.createElement('div');
-        container.innerHTML = html;
-        const element = container.querySelector('body') || container;
+        const html2pdfModule = await import('html2pdf.js');
+        const html2pdf = (html2pdfModule as any).default || html2pdfModule;
+        const parsedDocument = new DOMParser().parseFromString(html, 'text/html');
+        const iframe = document.createElement('iframe');
+
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '8.5in';
+        iframe.style.height = '11in';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+        iframe.style.border = '0';
+
+        document.body.appendChild(iframe);
+
+        const iframeDocument =
+          iframe.contentDocument || iframe.contentWindow?.document;
+
+        if (!iframeDocument) {
+          document.body.removeChild(iframe);
+          throw new Error('Failed to prepare PDF export frame.');
+        }
+
+        iframeDocument.open();
+        iframeDocument.write('<!doctype html><html><head></head><body></body></html>');
+        iframeDocument.close();
+
+        const exportRoot = iframeDocument.createElement('div');
+        const styleTag = iframeDocument.createElement('style');
+        const content = iframeDocument.createElement('div');
+
+        exportRoot.style.width = '8.5in';
+        exportRoot.style.minHeight = '11in';
+        exportRoot.style.background = '#FFFFFF';
+        exportRoot.style.boxSizing = 'border-box';
+
+        styleTag.textContent = parsedDocument.querySelector('style')?.textContent || '';
+        content.innerHTML = parsedDocument.body.innerHTML;
+
+        exportRoot.appendChild(styleTag);
+        exportRoot.appendChild(content);
+        iframeDocument.body.appendChild(exportRoot);
+
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve());
+          });
+        });
 
         const pdfOptions = {
           margin: 0.4,
@@ -769,7 +1077,12 @@ ${result.missingKeywords.join(', ')}
           pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
         };
 
-        await html2pdf().from(element).set(pdfOptions as any).save();
+        try {
+          await html2pdf().from(exportRoot).set(pdfOptions as any).save();
+        } finally {
+          document.body.removeChild(iframe);
+        }
+
         return;
       }
 
@@ -810,14 +1123,35 @@ ${result.missingKeywords.join(', ')}
 
   const ResumeStyleButton = ({ value }: { value: ResumeStyle }) => {
     const active = resumeStyle === value;
+    const option = RESUME_STYLE_OPTIONS.find((item) => item.value === value);
+
+    if (!option) {
+      return null;
+    }
 
     return (
       <TouchableOpacity
-        style={[styles.pillButton, active && styles.pillButtonActive]}
+        style={[styles.styleCard, active && styles.styleCardActive]}
         onPress={() => setResumeStyle(value)}
       >
-        <Text style={[styles.pillButtonText, active && styles.pillButtonTextActive]}>
-          {value}
+        <View
+          style={[
+            styles.stylePreview,
+            { backgroundColor: option.previewBackground, borderColor: option.accent },
+          ]}
+        >
+          <View style={[styles.stylePreviewBar, { backgroundColor: option.accent }]} />
+          <View style={styles.stylePreviewLines}>
+            <View style={[styles.stylePreviewLineShort, { backgroundColor: option.previewInk }]} />
+            <View style={[styles.stylePreviewLineLong, { backgroundColor: option.previewInk }]} />
+            <View style={[styles.stylePreviewLineMedium, { backgroundColor: option.accent }]} />
+          </View>
+        </View>
+        <Text style={[styles.styleCardTitle, active && styles.styleCardTitleActive]}>
+          {option.label}
+        </Text>
+        <Text style={[styles.styleCardDescription, active && styles.styleCardDescriptionActive]}>
+          {option.description}
         </Text>
       </TouchableOpacity>
     );
@@ -1287,10 +1621,10 @@ ${result.missingKeywords.join(', ')}
                   </View>
 
                   <Text style={styles.label}>Resume Style</Text>
-                  <View style={styles.pillRow}>
-                    <ResumeStyleButton value="Classic" />
-                    <ResumeStyleButton value="Modern" />
-                    <ResumeStyleButton value="Compact" />
+                  <View style={styles.styleGrid}>
+                    {RESUME_STYLE_OPTIONS.map((option) => (
+                      <ResumeStyleButton key={option.value} value={option.value} />
+                    ))}
                   </View>
 
                   <View style={styles.actionRow}>
@@ -1347,10 +1681,10 @@ ${result.missingKeywords.join(', ')}
                   </View>
 
                   <Text style={styles.label}>Resume Style</Text>
-                  <View style={styles.pillRow}>
-                    <ResumeStyleButton value="Classic" />
-                    <ResumeStyleButton value="Modern" />
-                    <ResumeStyleButton value="Compact" />
+                  <View style={styles.styleGrid}>
+                    {RESUME_STYLE_OPTIONS.map((option) => (
+                      <ResumeStyleButton key={option.value} value={option.value} />
+                    ))}
                   </View>
 
                   <View style={styles.actionRow}>
@@ -1535,6 +1869,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 18,
   },
+  styleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 4,
+    marginBottom: 18,
+  },
   pillButton: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -1553,6 +1894,71 @@ const styles = StyleSheet.create({
   },
   pillButtonTextActive: {
     color: '#FFFFFF',
+  },
+  styleCard: {
+    width: 154,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 16,
+    padding: 12,
+  },
+  styleCardActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  stylePreview: {
+    height: 76,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  stylePreviewBar: {
+    width: 10,
+    height: '100%',
+  },
+  stylePreviewLines: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  stylePreviewLineShort: {
+    height: 8,
+    width: '42%',
+    borderRadius: 999,
+    opacity: 0.95,
+  },
+  stylePreviewLineMedium: {
+    height: 6,
+    width: '68%',
+    borderRadius: 999,
+    opacity: 0.85,
+  },
+  stylePreviewLineLong: {
+    height: 6,
+    width: '92%',
+    borderRadius: 999,
+    opacity: 0.25,
+  },
+  styleCardTitle: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  styleCardTitleActive: {
+    color: '#1D4ED8',
+  },
+  styleCardDescription: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  styleCardDescriptionActive: {
+    color: '#1E40AF',
   },
   actionRow: {
     flexDirection: 'row',
