@@ -699,7 +699,10 @@ export default function ProfileScreen() {
 
           <View style={styles.sectionShell}>
           <TouchableOpacity
-            style={styles.collectionSectionHeader}
+            style={[
+              styles.collectionSectionHeader,
+              isNarrowScreen && styles.collectionSectionHeaderNarrow,
+            ]}
             onPress={() => toggleSection('experience')}
           >
             <View>
@@ -831,7 +834,10 @@ export default function ProfileScreen() {
 
           <View style={styles.sectionShell}>
           <TouchableOpacity
-            style={styles.collectionSectionHeader}
+            style={[
+              styles.collectionSectionHeader,
+              isNarrowScreen && styles.collectionSectionHeaderNarrow,
+            ]}
             onPress={() => toggleSection('projects')}
           >
             <View>
@@ -943,7 +949,10 @@ export default function ProfileScreen() {
 
           <View style={styles.sectionShell}>
           <TouchableOpacity
-            style={styles.collectionSectionHeader}
+            style={[
+              styles.collectionSectionHeader,
+              isNarrowScreen && styles.collectionSectionHeaderNarrow,
+            ]}
             onPress={() => toggleSection('education')}
           >
             <View>
@@ -1067,7 +1076,10 @@ export default function ProfileScreen() {
 
           <View style={styles.sectionShell}>
           <TouchableOpacity
-            style={styles.collectionSectionHeader}
+            style={[
+              styles.collectionSectionHeader,
+              isNarrowScreen && styles.collectionSectionHeaderNarrow,
+            ]}
             onPress={() => toggleSection('certifications')}
           >
             <View>
@@ -1449,13 +1461,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingVertical: 4,
     },
+    collectionSectionHeaderNarrow: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    },
     collectionSectionMeta: {
     alignItems: 'flex-end',
     gap: 4,
     },
     collectionSectionMetaNarrow: {
-    flexShrink: 0,
-    marginLeft: 8,
+    alignItems: 'flex-start',
+    marginLeft: 0,
+    width: '100%',
     },
     label: {
     color: '#1E293B',
