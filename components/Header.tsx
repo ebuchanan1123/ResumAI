@@ -44,7 +44,13 @@ export default function Header() {
               </TouchableOpacity>
             </Link>
 
-            <Link href="/(tabs)" asChild>
+            <Link href="/cover-letter" asChild>
+              <TouchableOpacity style={styles.mobilePlainNavItem}>
+                <Text style={styles.mobilePlainNavText}>Cover Letter</Text>
+              </TouchableOpacity>
+            </Link>
+
+            <Link href="/resume" asChild>
               <TouchableOpacity style={styles.mobilePlainNavItem}>
                 <Text style={styles.mobilePlainNavText}>Resume Generator</Text>
               </TouchableOpacity>
@@ -81,7 +87,13 @@ export default function Header() {
               </TouchableOpacity>
             </Link>
 
-            <Link href="/(tabs)" asChild>
+            <Link href="/cover-letter" asChild>
+              <TouchableOpacity style={styles.navItem}>
+                <Text style={styles.navText}>Cover Letter</Text>
+              </TouchableOpacity>
+            </Link>
+
+            <Link href="/resume" asChild>
               <TouchableOpacity style={styles.navItem}>
                 <Text style={styles.navText}>Resume Generator</Text>
               </TouchableOpacity>

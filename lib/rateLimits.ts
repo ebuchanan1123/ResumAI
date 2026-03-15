@@ -11,7 +11,10 @@ type StoredRateLimit = {
 
 type RateLimitStore = Partial<Record<RateLimitKey, StoredRateLimit>>;
 
-export const DAILY_LIMIT = 5;
+const DAILY_LIMITS: Record<RateLimitKey, number> = {
+  resume_generation: 100,
+  bullet_generation: 5,
+};
 
 const getLocalDateKey = () => {
   const now = new Date();
@@ -54,11 +57,12 @@ const getEntryForToday = (store: RateLimitStore, key: RateLimitKey): StoredRateL
 export const getDailyUsage = async (key: RateLimitKey) => {
   const store = await loadRateLimitStore();
   const entry = getEntryForToday(store, key);
+  const limit = DAILY_LIMITS[key];
 
   return {
     count: entry.count,
-    remaining: Math.max(DAILY_LIMIT - entry.count, 0),
-    limit: DAILY_LIMIT,
+    remaining: Math.max(limit - entry.count, 0),
+    limit,
   };
 };
 
@@ -66,6 +70,7 @@ export const consumeDailyUsage = async (key: RateLimitKey) => {
   const store = await loadRateLimitStore();
   const entry = getEntryForToday(store, key);
   const nextCount = entry.count + 1;
+  const limit = DAILY_LIMITS[key];
 
   store[key] = {
     date: entry.date,
@@ -76,8 +81,8 @@ export const consumeDailyUsage = async (key: RateLimitKey) => {
 
   return {
     count: nextCount,
-    remaining: Math.max(DAILY_LIMIT - nextCount, 0),
-    limit: DAILY_LIMIT,
+    remaining: Math.max(limit - nextCount, 0),
+    limit,
   };
 };
 
@@ -85,6 +90,7 @@ export const releaseDailyUsage = async (key: RateLimitKey) => {
   const store = await loadRateLimitStore();
   const entry = getEntryForToday(store, key);
   const nextCount = Math.max(entry.count - 1, 0);
+  const limit = DAILY_LIMITS[key];
 
   store[key] = {
     date: entry.date,
@@ -95,10 +101,10 @@ export const releaseDailyUsage = async (key: RateLimitKey) => {
 
   return {
     count: nextCount,
-    remaining: Math.max(DAILY_LIMIT - nextCount, 0),
-    limit: DAILY_LIMIT,
+    remaining: Math.max(limit - nextCount, 0),
+    limit,
   };
 };
 
-export const getLimitReachedMessage = (label: string) =>
-  `You've reached today's ${DAILY_LIMIT} ${label} limit on this device. Try again tomorrow.`;
+export const getLimitReachedMessage = (key: RateLimitKey, label: string) =>
+  `You've reached today's ${DAILY_LIMITS[key]} ${label} limit on this device. Try again tomorrow.`;

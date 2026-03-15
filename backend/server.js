@@ -319,6 +319,85 @@ ${jobDescription}
   }
 });
 
+app.post('/generate-cover-letter', async (req, res) => {
+  try {
+    const { profile, jobDescription, tone, companyContext, hiringManager } = req.body;
+
+    if (
+      !profile ||
+      typeof profile !== 'object' ||
+      !jobDescription ||
+      jobDescription.trim().length < 30
+    ) {
+      return res.status(400).json({
+        error: 'Missing or invalid profile or job description.',
+      });
+    }
+
+    const prompt = `
+You are an expert cover letter writer for students and early-career applicants.
+
+Write a tailored cover letter using the user's profile and the target job description.
+
+Return valid JSON only in this exact structure:
+{
+  "coverLetter": "string"
+}
+
+Rules:
+- Write one complete cover letter, ready to edit and send
+- Keep it professional, specific, and enthusiastic
+- Do not use placeholders like [Company] or [Hiring Manager] unless the information is truly unavailable
+- If the hiring manager is not known, begin with "Dear Hiring Team,"
+- Keep it to about 250 to 350 words
+- Use only information supported by the profile
+- Do not invent fake metrics, employers, achievements, or technologies
+- Show clear alignment with the role and company where possible
+- Emphasize relevant projects, experience, and skills from the profile
+- Keep the tone: ${tone || 'Technical'}
+
+User Profile:
+${JSON.stringify(profile, null, 2)}
+
+Target Job Description:
+${jobDescription}
+
+Optional Company Context:
+${companyContext || ''}
+
+Optional Hiring Manager:
+${hiringManager || ''}
+`;
+
+    const response = await client.responses.create({
+      model: 'gpt-5-mini',
+      input: prompt,
+    });
+
+    const text = (response.output_text || '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseError) {
+      console.error('JSON PARSE ERROR /generate-cover-letter:', text);
+      return res.status(500).json({
+        error: 'Failed to parse cover letter response.',
+      });
+    }
+
+    return res.json({
+      coverLetter: typeof parsed.coverLetter === 'string' ? parsed.coverLetter.trim() : '',
+    });
+  } catch (error) {
+    console.error('OPENAI ERROR /generate-cover-letter:', error);
+
+    return res.status(500).json({
+      error: error?.message || 'Failed to generate cover letter.',
+    });
+  }
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${port}`);
 });

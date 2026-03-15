@@ -104,6 +104,10 @@ export const saveProfileToStorage = async (profile: UserProfile) => {
   await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 };
 
+export const clearProfileFromStorage = async () => {
+  await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+};
+
 export const loadProfileFromStorage = async (): Promise<UserProfile> => {
   const raw = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
 

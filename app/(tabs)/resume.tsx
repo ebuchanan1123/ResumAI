@@ -161,6 +161,15 @@ const RESUME_STYLE_OPTIONS: {
   },
 ];
 
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+
+  Alert.alert(title, message);
+};
+
 export default function ResumeScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1400;
@@ -199,7 +208,7 @@ export default function ResumeScreen() {
         setProfile(storedProfile);
         setSavedVersions(storedVersions);
       } catch {
-        Alert.alert('Error', 'Failed to load profile or saved resumes.');
+        showAlert('Error', 'Failed to load profile or saved resumes.');
       } finally {
         setProfileLoading(false);
       }
@@ -219,36 +228,40 @@ export default function ResumeScreen() {
     try {
       const storedProfile = await loadProfileFromStorage();
       setProfile(storedProfile);
-      Alert.alert('Loaded', 'Latest profile data loaded.');
+      showAlert('Loaded', 'Latest profile data loaded.');
     } catch {
-      Alert.alert('Error', 'Failed to reload profile.');
+      showAlert('Error', 'Failed to reload profile.');
     }
   };
 
   const tailorResume = async () => {
     if (!profile) {
-      Alert.alert('Error', 'Profile is not loaded yet.');
+      showAlert('Error', 'Profile is not loaded yet.');
       return;
     }
 
     if (jobDescription.trim().length < 30) {
-      Alert.alert('Error', 'Please paste a longer job description.');
-      return;
-    }
-
-    const usage = await getDailyUsage('resume_generation');
-    if (usage.remaining === 0) {
-      Alert.alert('Daily limit reached', getLimitReachedMessage('resume generations'));
+      showAlert('Error', 'Please paste a longer job description.');
       return;
     }
 
     let usageConsumed = false;
 
     try {
-      await consumeDailyUsage('resume_generation');
-      usageConsumed = true;
       setLoading(true);
       setResult(null);
+
+      const usage = await getDailyUsage('resume_generation');
+      if (usage.remaining === 0) {
+        showAlert(
+          'Daily limit reached',
+          getLimitReachedMessage('resume_generation', 'resume generations')
+        );
+        return;
+      }
+
+      await consumeDailyUsage('resume_generation');
+      usageConsumed = true;
 
       const res = await fetch(`${API_URL}/tailor-resume`, {
         method: 'POST',
@@ -273,7 +286,7 @@ export default function ResumeScreen() {
       if (usageConsumed) {
         await releaseDailyUsage('resume_generation');
       }
-      Alert.alert('Error', err.message || 'Something went wrong.');
+      showAlert('Error', err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
     }
@@ -281,7 +294,7 @@ export default function ResumeScreen() {
 
   const saveCurrentVersion = async () => {
     if (!result || !profile) {
-      Alert.alert('Error', 'Generate a resume first before saving.');
+      showAlert('Error', 'Generate a resume first before saving.');
       return;
     }
 
@@ -305,9 +318,9 @@ export default function ResumeScreen() {
       await saveResumeVersions(updated);
 
       setSaveTitle('');
-      Alert.alert('Saved', 'Resume version saved locally.');
+      showAlert('Saved', 'Resume version saved locally.');
     } catch {
-      Alert.alert('Error', 'Failed to save resume version.');
+      showAlert('Error', 'Failed to save resume version.');
     } finally {
       setSavingVersion(false);
     }
@@ -317,7 +330,7 @@ export default function ResumeScreen() {
     setResult(version.result);
     setJobDescription(version.jobDescription);
     setTone(version.tone as Tone);
-    Alert.alert('Loaded', 'Saved resume version loaded into the editor.');
+    showAlert('Loaded', 'Saved resume version loaded into the editor.');
   };
 
   const deleteVersion = async (id: string) => {
@@ -326,13 +339,13 @@ export default function ResumeScreen() {
       setSavedVersions(updated);
       await saveResumeVersions(updated);
     } catch {
-      Alert.alert('Error', 'Failed to delete saved version.');
+      showAlert('Error', 'Failed to delete saved version.');
     }
   };
 
   const copySection = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'Section copied to clipboard.');
+    showAlert('Copied', 'Section copied to clipboard.');
   };
 
   const updateSummary = (text: string) => {
@@ -494,7 +507,7 @@ ${result.missingKeywords.join(', ')}
   const copyFullResume = async () => {
     if (!fullResumeText) return;
     await Clipboard.setStringAsync(fullResumeText);
-    Alert.alert('Copied', 'Full tailored resume copied to clipboard.');
+    showAlert('Copied', 'Full tailored resume copied to clipboard.');
   };
 
   const escapeHtml = (value: string) =>
@@ -504,6 +517,75 @@ ${result.missingKeywords.join(', ')}
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+
+  const getPdfTheme = (style: ResumeStyle) => {
+    const themes: Record<
+      ResumeStyle,
+      {
+        font: 'times' | 'helvetica' | 'courier';
+        headingColor: [number, number, number];
+        textColor: [number, number, number];
+        accentColor: [number, number, number];
+        sectionFill?: [number, number, number];
+      }
+    > = {
+      Classic: {
+        font: 'times',
+        headingColor: [0, 0, 0],
+        textColor: [15, 23, 42],
+        accentColor: [0, 0, 0],
+      },
+      Modern: {
+        font: 'helvetica',
+        headingColor: [26, 26, 26],
+        textColor: [17, 17, 17],
+        accentColor: [37, 99, 235],
+      },
+      Compact: {
+        font: 'helvetica',
+        headingColor: [0, 0, 0],
+        textColor: [15, 23, 42],
+        accentColor: [51, 65, 85],
+      },
+      Executive: {
+        font: 'times',
+        headingColor: [15, 23, 42],
+        textColor: [20, 33, 61],
+        accentColor: [180, 83, 9],
+        sectionFill: [254, 243, 199],
+      },
+      Spotlight: {
+        font: 'helvetica',
+        headingColor: [11, 59, 102],
+        textColor: [15, 23, 42],
+        accentColor: [14, 165, 233],
+        sectionFill: [224, 242, 254],
+      },
+      Nordic: {
+        font: 'helvetica',
+        headingColor: [22, 50, 79],
+        textColor: [22, 50, 79],
+        accentColor: [42, 157, 143],
+        sectionFill: [224, 242, 241],
+      },
+      Mono: {
+        font: 'courier',
+        headingColor: [17, 24, 39],
+        textColor: [17, 24, 39],
+        accentColor: [17, 24, 39],
+        sectionFill: [243, 244, 246],
+      },
+      Canvas: {
+        font: 'helvetica',
+        headingColor: [124, 58, 237],
+        textColor: [31, 41, 55],
+        accentColor: [249, 115, 22],
+        sectionFill: [255, 237, 213],
+      },
+    };
+
+    return themes[style];
+  };
 
   const buildResumeHtml = () => {
     if (!result || !profile) return '';
@@ -749,6 +831,13 @@ ${result.missingKeywords.join(', ')}
         font-size: ${currentStyle.bodyFontSize};
         line-height: ${currentStyle.bodyLineHeight};
         background: ${currentStyle.pageBackground};
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .resume-shell {
+        width: 100%;
+        box-sizing: border-box;
       }
 
       .section-heading-block,
@@ -832,6 +921,7 @@ ${result.missingKeywords.join(', ')}
     </style>
   </head>
   <body>
+    <div class="resume-shell">
     <h1>${escapeHtml(profile.fullName || 'Your Name')}</h1>
     <div class="contact">${escapeHtml(headerLine)}</div>
 
@@ -1002,6 +1092,7 @@ ${result.missingKeywords.join(', ')}
     `
         : ''
     }
+    </div>
   </body>
 </html>
     `.trim();
@@ -1013,84 +1104,255 @@ ${result.missingKeywords.join(', ')}
     try {
       setExportingPdf(true);
 
-      const html = buildResumeHtml();
-
       if (Platform.OS === 'web') {
-        const html2pdfModule = await import('html2pdf.js');
-        const html2pdf = (html2pdfModule as any).default || html2pdfModule;
-        const parsedDocument = new DOMParser().parseFromString(html, 'text/html');
-        const iframe = document.createElement('iframe');
-
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '8.5in';
-        iframe.style.height = '11in';
-        iframe.style.opacity = '0';
-        iframe.style.pointerEvents = 'none';
-        iframe.style.border = '0';
-
-        document.body.appendChild(iframe);
-
-        const iframeDocument =
-          iframe.contentDocument || iframe.contentWindow?.document;
-
-        if (!iframeDocument) {
-          document.body.removeChild(iframe);
-          throw new Error('Failed to prepare PDF export frame.');
-        }
-
-        iframeDocument.open();
-        iframeDocument.write('<!doctype html><html><head></head><body></body></html>');
-        iframeDocument.close();
-
-        const exportRoot = iframeDocument.createElement('div');
-        const styleTag = iframeDocument.createElement('style');
-        const content = iframeDocument.createElement('div');
-
-        exportRoot.style.width = '8.5in';
-        exportRoot.style.minHeight = '11in';
-        exportRoot.style.background = '#FFFFFF';
-        exportRoot.style.boxSizing = 'border-box';
-
-        styleTag.textContent = parsedDocument.querySelector('style')?.textContent || '';
-        content.innerHTML = parsedDocument.body.innerHTML;
-
-        exportRoot.appendChild(styleTag);
-        exportRoot.appendChild(content);
-        iframeDocument.body.appendChild(exportRoot);
-
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => resolve());
-          });
+        const jspdfModule = await import('jspdf/dist/jspdf.es.min.js');
+        const { jsPDF } = jspdfModule as any;
+        
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'pt',
+          format: 'letter',
         });
+        const theme = getPdfTheme(resumeStyle);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const marginX = 42;
+        const marginTop = 42;
+        const marginBottom = 42;
+        const contentWidth = pageWidth - marginX * 2;
+        const sectionGap = 8;
+        const sectionContentGap = 12;
+        const itemGap = 10;
+        const bulletIndent = 12;
+        const lineHeight = 14;
 
-        const pdfOptions = {
-          margin: 0.4,
-          filename: `${(profile.fullName || 'resume')
-            .replace(/\s+/g, '_')
-            .toLowerCase()}_resume.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        let y = marginTop;
+
+        const ensureSpace = (needed: number) => {
+          if (y + needed > pageHeight - marginBottom) {
+            pdf.addPage();
+            y = marginTop;
+          }
         };
 
-        try {
-          await html2pdf().from(exportRoot).set(pdfOptions as any).save();
-        } finally {
-          document.body.removeChild(iframe);
+        const setTextColor = (color: [number, number, number]) => {
+          pdf.setTextColor(color[0], color[1], color[2]);
+        };
+
+        const drawWrappedText = (
+          text: string,
+          x: number,
+          width: number,
+          options?: {
+            fontSize?: number;
+            lineGap?: number;
+            color?: [number, number, number];
+            fontStyle?: 'normal' | 'bold';
+          }
+        ) => {
+          const fontSize = options?.fontSize ?? 10.5;
+          const appliedLineHeight = options?.lineGap ?? lineHeight;
+          const safeText = (text || '').trim();
+          if (!safeText) return;
+          pdf.setFont(theme.font, options?.fontStyle ?? 'normal');
+          pdf.setFontSize(fontSize);
+          setTextColor(options?.color ?? theme.textColor);
+          const lines = pdf.splitTextToSize(safeText, width);
+          ensureSpace(lines.length * appliedLineHeight);
+          pdf.text(lines, x, y);
+          y += lines.length * appliedLineHeight;
+        };
+
+        const drawSectionTitle = (title: string) => {
+          ensureSpace(28);
+          if (theme.sectionFill) {
+            pdf.setFillColor(theme.sectionFill[0], theme.sectionFill[1], theme.sectionFill[2]);
+            pdf.roundedRect(marginX, y - 11, contentWidth, 18, 3, 3, 'F');
+          }
+          pdf.setDrawColor(theme.accentColor[0], theme.accentColor[1], theme.accentColor[2]);
+          pdf.setLineWidth(3);
+          pdf.line(marginX, y - 11, marginX, y + 7);
+          pdf.setFont(theme.font, 'bold');
+          pdf.setFontSize(11.5);
+          setTextColor(theme.headingColor);
+          pdf.text(title, marginX + 10, y + 2);
+          y += sectionGap;
+        };
+
+        const drawMetaLine = (text: string) => {
+          drawWrappedText(text, marginX, contentWidth, {
+            fontSize: 9.5,
+            lineGap: 12,
+            color: [85, 85, 85],
+          });
+        };
+
+        const drawBulletList = (bullets: string[]) => {
+          bullets.filter(Boolean).forEach((bullet) => {
+            const bulletLines = pdf.splitTextToSize(bullet.trim(), contentWidth - bulletIndent - 6);
+            ensureSpace(bulletLines.length * lineHeight + 2);
+            pdf.setFont(theme.font, 'normal');
+            pdf.setFontSize(10.5);
+            setTextColor(theme.accentColor);
+            pdf.text('\u2022', marginX, y);
+            setTextColor(theme.textColor);
+            pdf.text(bulletLines, marginX + bulletIndent, y);
+            y += bulletLines.length * lineHeight;
+            y += 2;
+          });
+        };
+
+        const drawEntry = ({
+          title,
+          subtitle,
+          meta,
+          details,
+          bullets,
+        }: {
+          title?: string;
+          subtitle?: string;
+          meta?: string;
+          details?: string;
+          bullets?: string[];
+        }) => {
+          ensureSpace(42);
+          if (title?.trim()) {
+            drawWrappedText(title, marginX, contentWidth, {
+              fontSize: 11.5,
+              lineGap: 14,
+              color: theme.headingColor,
+              fontStyle: 'bold',
+            });
+          }
+          if (subtitle?.trim()) {
+            drawWrappedText(subtitle, marginX, contentWidth, {
+              fontSize: 10.5,
+              lineGap: 13,
+              color: theme.textColor,
+              fontStyle: 'normal',
+            });
+          }
+          if (meta?.trim()) {
+            drawMetaLine(meta);
+            y += 5;
+          }
+          if (details?.trim()) {
+            drawWrappedText(details, marginX, contentWidth, { fontSize: 10, lineGap: 13 });
+          }
+          if (bullets?.length) {
+            drawBulletList(bullets);
+          }
+          y += itemGap;
+        };
+
+        pdf.setFont(theme.font, 'bold');
+        pdf.setFontSize(22);
+        setTextColor(theme.headingColor);
+        pdf.text(profile.fullName || 'Your Name', marginX, y);
+        y += 20;
+
+        const headerLine = [profile.email?.trim(), profile.phone?.trim(), profile.location?.trim()]
+          .filter(Boolean)
+          .join(' | ');
+
+        if (headerLine) {
+          drawWrappedText(headerLine, marginX, contentWidth, {
+            fontSize: 9.5,
+            lineGap: 12,
+            color: theme.accentColor,
+          });
+          y += 12;
         }
+
+        drawSectionTitle('SUMMARY');
+        y += sectionContentGap;
+        drawWrappedText(result.summary, marginX, contentWidth, { fontSize: 10.5, lineGap: 14 });
+        y += 4;
+
+        if (result.education.length) {
+          drawSectionTitle('EDUCATION');
+          y += sectionContentGap;
+          result.education.forEach((edu) => {
+            drawEntry({
+              title: edu.school,
+              subtitle: [edu.degree, edu.fieldOfStudy].filter(Boolean).join(', '),
+              meta: [edu.startDate, edu.endDate].filter(Boolean).join(' - '),
+              details: edu.details,
+            });
+          });
+        }
+
+        if (result.skills.length) {
+          drawSectionTitle('SKILLS');
+          y += sectionContentGap;
+          drawWrappedText(result.skills.join(', '), marginX, contentWidth, {
+            fontSize: 10.5,
+            lineGap: 14,
+          });
+          y += 4;
+        }
+
+        if (result.projects.length) {
+          drawSectionTitle('PROJECTS');
+          y += sectionContentGap;
+          result.projects.forEach((project) => {
+            drawEntry({
+              title: project.name,
+              subtitle: project.role,
+              bullets: project.bullets,
+            });
+          });
+        }
+
+        if (result.experience.length) {
+          drawSectionTitle('EXPERIENCE');
+          y += sectionContentGap;
+          result.experience.forEach((exp) => {
+            drawEntry({
+              title: exp.company,
+              subtitle: exp.title,
+              meta: [exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : '', exp.location]
+                .filter(Boolean)
+                .join(' | '),
+              bullets: exp.bullets,
+            });
+          });
+        }
+
+        if (result.certifications.length) {
+          drawSectionTitle('CERTIFICATIONS');
+          y += sectionContentGap;
+          result.certifications.forEach((cert) => {
+            drawEntry({
+              title: cert.name,
+              subtitle: cert.issuer,
+              meta: [
+                cert.issueDate,
+                cert.expiryDate ? `Expires ${cert.expiryDate}` : '',
+              ]
+                .filter(Boolean)
+                .join(' | '),
+              details: [cert.credentialId ? `Credential ID: ${cert.credentialId}` : '', cert.details]
+                .filter(Boolean)
+                .join('\n'),
+            });
+          });
+        }
+
+        pdf.save(
+          `${(profile.fullName || 'resume').replace(/\s+/g, '_').toLowerCase()}_resume.pdf`
+        );
 
         return;
       }
+
+      const html = buildResumeHtml();
 
       const { uri } = await Print.printToFileAsync({ html });
 
       const canShare = await Sharing.isAvailableAsync();
       if (!canShare) {
-        Alert.alert('PDF created', `Saved PDF at: ${uri}`);
+        showAlert('PDF created', `Saved PDF at: ${uri}`);
         return;
       }
 
@@ -1100,7 +1362,7 @@ ${result.missingKeywords.join(', ')}
         UTI: 'com.adobe.pdf',
       });
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to export PDF.');
+      showAlert('Error', err.message || 'Failed to export PDF.');
     } finally {
       setExportingPdf(false);
     }
@@ -1638,6 +1900,7 @@ ${result.missingKeywords.join(', ')}
                       </Text>
                     </TouchableOpacity>
                   </View>
+
                 </View>
               </View>
 
@@ -1698,6 +1961,7 @@ ${result.missingKeywords.join(', ')}
                       </Text>
                     </TouchableOpacity>
                   </View>
+
                 </View>
               </View>
 

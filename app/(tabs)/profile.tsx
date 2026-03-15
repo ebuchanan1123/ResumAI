@@ -19,6 +19,7 @@ import {
   createEmptyExperience,
   createEmptyProfile,
   createEmptyProject,
+  clearProfileFromStorage,
   loadProfileFromStorage,
   saveProfileToStorage,
   type UserProfile,
@@ -269,15 +270,22 @@ export default function ProfileScreen() {
         {
           text: 'Reset',
           style: 'destructive',
-          onPress: () => {
-            setProfile(createEmptyProfile());
-            setExpandedPanel('basic');
-            setExpandedSections({
-              experience: false,
-              projects: false,
-              education: false,
-              certifications: false,
-            });
+          onPress: async () => {
+            try {
+              await clearProfileFromStorage();
+              setProfile(createEmptyProfile());
+              setResumeImportText('');
+              setExpandedPanel('basic');
+              setExpandedSections({
+                experience: false,
+                projects: false,
+                education: false,
+                certifications: false,
+              });
+              Alert.alert('Reset', 'Your profile has been cleared from this device.');
+            } catch {
+              Alert.alert('Error', 'Failed to reset profile.');
+            }
           },
         },
       ]

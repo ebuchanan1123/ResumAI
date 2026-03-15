@@ -47,7 +47,10 @@ export default function HomeScreen() {
 
     const usage = await getDailyUsage('bullet_generation');
     if (usage.remaining === 0) {
-      Alert.alert('Daily limit reached', getLimitReachedMessage('bullet generations'));
+      Alert.alert(
+        'Daily limit reached',
+        getLimitReachedMessage('bullet_generation', 'bullet generations')
+      );
       return;
     }
 
@@ -101,7 +104,10 @@ export default function HomeScreen() {
 
     const usage = await getDailyUsage('bullet_generation');
     if (usage.remaining === 0) {
-      Alert.alert('Daily limit reached', getLimitReachedMessage('bullet generations'));
+      Alert.alert(
+        'Daily limit reached',
+        getLimitReachedMessage('bullet_generation', 'bullet generations')
+      );
       return;
     }
 
