@@ -30,6 +30,15 @@ type SectionOption = 'experience' | 'project' | 'education' | 'certification';
 type ExpandedPanel = 'basic' | 'summary' | 'import' | `item:${string}` | null;
 type CollectionSectionKey = 'experience' | 'projects' | 'education' | 'certifications';
 
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+
+  Alert.alert(title, message);
+};
+
 export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const isNarrowScreen = width < 430;
@@ -256,9 +265,9 @@ export default function ProfileScreen() {
     try {
       setSaving(true);
       await saveProfileToStorage(profile);
-      Alert.alert('Saved', 'Your profile was saved locally on this device.');
+      showAlert('Saved', 'Your profile was saved locally on this device.');
     } catch {
-      Alert.alert('Error', 'Failed to save profile.');
+      showAlert('Error', 'Failed to save profile.');
     } finally {
       setSaving(false);
     }
@@ -626,6 +635,30 @@ export default function ProfileScreen() {
                   onChangeText={(value) => updateField('location', value)}
                   placeholder="e.g. Toronto, Ontario, Canada"
                   placeholderTextColor="#8C8C8C"
+                />
+
+                <Text style={styles.label}>LinkedIn URL</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.linkedinUrl}
+                  onChangeText={(value) => updateField('linkedinUrl', value)}
+                  placeholder="e.g. linkedin.com/in/johndoe"
+                  placeholderTextColor="#8C8C8C"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <Text style={styles.label}>GitHub URL</Text>
+                <TextInput
+                  style={styles.input}
+                  value={profile.githubUrl}
+                  onChangeText={(value) => updateField('githubUrl', value)}
+                  placeholder="e.g. github.com/johndoe"
+                  placeholderTextColor="#8C8C8C"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
                 </View>
               )}

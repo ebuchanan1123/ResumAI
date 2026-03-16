@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  type ViewStyle,
   useWindowDimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -79,13 +80,13 @@ type TailoredResumeResponse = {
 
 type ResultSectionKey =
   | 'saved'
+  | 'ats'
   | 'summary'
   | 'education'
   | 'skills'
   | 'projects'
   | 'experience'
-  | 'certifications'
-  | 'keywords';
+  | 'certifications';
 
 const RESUME_STYLE_OPTIONS: {
   value: ResumeStyle;
@@ -170,6 +171,140 @@ const showAlert = (title: string, message: string) => {
   Alert.alert(title, message);
 };
 
+const normalizeExternalUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
+const buildContactItems = (profile: UserProfile | null): { label: string; href?: string }[] => {
+  if (!profile) return [];
+
+  const items: { label: string; href?: string }[] = [];
+
+  if (profile.email?.trim()) {
+    const email = profile.email.trim();
+    items.push({ label: email, href: `mailto:${email}` });
+  }
+
+  if (profile.phone?.trim()) {
+    items.push({ label: profile.phone.trim() });
+  }
+
+  if (profile.location?.trim()) {
+    items.push({ label: profile.location.trim() });
+  }
+
+  if (profile.linkedinUrl?.trim()) {
+    items.push({
+      label: 'LinkedIn',
+      href: normalizeExternalUrl(profile.linkedinUrl),
+    });
+  }
+
+  if (profile.githubUrl?.trim()) {
+    items.push({
+      label: 'GitHub',
+      href: normalizeExternalUrl(profile.githubUrl),
+    });
+  }
+
+  return items;
+};
+
+const ATS_STOP_WORDS = new Set([
+  'about',
+  'ability',
+  'across',
+  'after',
+  'also',
+  'among',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'because',
+  'build',
+  'built',
+  'by',
+  'can',
+  'collaborate',
+  'company',
+  'create',
+  'creating',
+  'day',
+  'deliver',
+  'develop',
+  'developing',
+  'development',
+  'experience',
+  'for',
+  'from',
+  'have',
+  'help',
+  'ideal',
+  'in',
+  'intern',
+  'internship',
+  'into',
+  'is',
+  'job',
+  'join',
+  'looking',
+  'our',
+  'role',
+  'skills',
+  'software',
+  'strong',
+  'team',
+  'that',
+  'the',
+  'their',
+  'this',
+  'through',
+  'to',
+  'using',
+  'we',
+  'well',
+  'with',
+  'work',
+  'working',
+  'you',
+  'your',
+]);
+
+const extractImportantKeywords = (text: string) => {
+  const matches = text.match(/[A-Za-z][A-Za-z0-9+#./-]*/g) ?? [];
+  const counts = new Map<string, number>();
+
+  matches.forEach((rawToken) => {
+    const normalized = rawToken.toLowerCase();
+    const isShortAllowed = ['ai', 'ml', 'ui', 'ux', 'go', 'c', 'c#'].includes(normalized);
+
+    if ((!isShortAllowed && normalized.length < 3) || ATS_STOP_WORDS.has(normalized)) {
+      return;
+    }
+
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  });
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([keyword]) => keyword)
+    .slice(0, 24);
+};
+
+const formatKeywordLabel = (keyword: string) =>
+  keyword
+    .split(/[\s-]+/)
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+
 export default function ResumeScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1400;
@@ -185,16 +320,17 @@ export default function ResumeScreen() {
   const [savedVersions, setSavedVersions] = useState<SavedResumeVersion[]>([]);
   const [saveTitle, setSaveTitle] = useState('');
   const [savingVersion, setSavingVersion] = useState(false);
+  const [expandedEntryEditor, setExpandedEntryEditor] = useState<string | null>(null);
 
   const [expandedSections, setExpandedSections] = useState<Record<ResultSectionKey, boolean>>({
-    saved: true,
-    summary: true,
-    education: true,
-    skills: true,
-    projects: true,
-    experience: true,
-    certifications: true,
-    keywords: true,
+    saved: false,
+    ats: true,
+    summary: false,
+    education: false,
+    skills: false,
+    projects: false,
+    experience: false,
+    certifications: false,
   });
 
   useEffect(() => {
@@ -222,6 +358,10 @@ export default function ResumeScreen() {
       ...prev,
       [key]: !prev[key],
     }));
+  };
+
+  const toggleEntryEditor = (key: string) => {
+    setExpandedEntryEditor((prev) => (prev === key ? null : key));
   };
 
   const reloadProfile = async () => {
@@ -282,6 +422,17 @@ export default function ResumeScreen() {
       }
 
       setResult(data);
+      setExpandedEntryEditor(null);
+      setExpandedSections({
+        saved: false,
+        ats: true,
+        summary: false,
+        education: false,
+        skills: false,
+        projects: false,
+        experience: false,
+        certifications: false,
+      });
     } catch (err: any) {
       if (usageConsumed) {
         await releaseDailyUsage('resume_generation');
@@ -362,15 +513,6 @@ export default function ResumeScreen() {
     setResult({ ...result, skills });
   };
 
-  const updateMissingKeywords = (text: string) => {
-    if (!result) return;
-    const missingKeywords = text
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    setResult({ ...result, missingKeywords });
-  };
-
   const updateEducationField = (
     index: number,
     field: keyof TailoredResumeResponse['education'][number],
@@ -436,8 +578,8 @@ export default function ResumeScreen() {
   const fullResumeText = useMemo(() => {
     if (!result || !profile) return '';
 
-    const headerLine = [profile.email?.trim(), profile.phone?.trim(), profile.location?.trim()]
-      .filter(Boolean)
+    const headerLine = buildContactItems(profile)
+      .map((item) => item.label)
       .join(' | ');
 
     return `
@@ -499,10 +641,60 @@ ${cert.details || ''}`.trim()
 
 `
     : ''
-}MISSING KEYWORDS
-${result.missingKeywords.join(', ')}
+}
 `.trim();
   }, [profile, result]);
+
+  const atsInsights = useMemo(() => {
+    if (!result || !jobDescription.trim()) return null;
+
+    const resumeCorpus = [
+      result.summary,
+      result.skills.join(' '),
+      ...result.education.map((edu) =>
+        [edu.school, edu.degree, edu.fieldOfStudy, edu.details].filter(Boolean).join(' ')
+      ),
+      ...result.projects.map((project) =>
+        [project.name, project.role, ...project.bullets].filter(Boolean).join(' ')
+      ),
+      ...result.experience.map((exp) =>
+        [exp.company, exp.title, exp.location, ...exp.bullets].filter(Boolean).join(' ')
+      ),
+      ...result.certifications.map((cert) =>
+        [cert.name, cert.issuer, cert.details, cert.credentialId].filter(Boolean).join(' ')
+      ),
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    const extractedKeywords = extractImportantKeywords(jobDescription);
+    const matchedKeywords = extractedKeywords.filter((keyword) => resumeCorpus.includes(keyword));
+    const suggestedKeywords = [...new Set(result.missingKeywords.map((keyword) => keyword.trim()).filter(Boolean))];
+    const denominator = matchedKeywords.length + suggestedKeywords.length;
+    const score = denominator === 0 ? 100 : Math.round((matchedKeywords.length / denominator) * 100);
+
+    let toneLabel = 'Strong alignment';
+    let color = '#15803D';
+
+    if (score < 50) {
+      toneLabel = 'Needs stronger alignment';
+      color = '#EF4444';
+    } else if (score < 70) {
+      toneLabel = 'Some important gaps remain';
+      color = '#F59E0B';
+    } else if (score < 90) {
+      toneLabel = 'Looking competitive';
+      color = '#84CC16';
+    }
+
+    return {
+      score,
+      toneLabel,
+      color,
+      matchedCount: matchedKeywords.length,
+      suggestedKeywords,
+    };
+  }, [jobDescription, result]);
 
   const copyFullResume = async () => {
     if (!fullResumeText) return;
@@ -804,13 +996,11 @@ ${result.missingKeywords.join(', ')}
 
     const currentStyle = styleMap[resumeStyle];
 
-    const headerLine = [
-      profile.email?.trim(),
-      profile.phone?.trim(),
-      profile.location?.trim(),
-    ]
-      .filter(Boolean)
-      .join(' | ');
+    const contactLine = buildContactItems(profile)
+      .map((item) =>
+        item.href ? `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>` : escapeHtml(item.label)
+      )
+      .join('<span class="contact-separator"> | </span>');
 
     return `
 <!doctype html>
@@ -868,6 +1058,15 @@ ${result.missingKeywords.join(', ')}
         padding-left: 18px;
       }
 
+      .contact a {
+        color: ${currentStyle.contactColor};
+        text-decoration: underline;
+      }
+
+      .contact-separator {
+        color: ${currentStyle.contactColor};
+      }
+
       .section-title {
         font-size: 12pt;
         font-weight: 700;
@@ -923,7 +1122,7 @@ ${result.missingKeywords.join(', ')}
   <body>
     <div class="resume-shell">
     <h1>${escapeHtml(profile.fullName || 'Your Name')}</h1>
-    <div class="contact">${escapeHtml(headerLine)}</div>
+    <div class="contact">${contactLine}</div>
 
     <div class="section-title">SUMMARY</div>
     <p class="para">${escapeHtml(result.summary)}</p>
@@ -1187,6 +1386,47 @@ ${result.missingKeywords.join(', ')}
           });
         };
 
+        const drawContactLine = (items: { label: string; href?: string }[]) => {
+          if (!items.length) return;
+
+          const baselineGap = 12;
+          const maxX = marginX + contentWidth;
+          let currentX = marginX;
+          let currentY = y;
+
+          pdf.setFont(theme.font, 'normal');
+          pdf.setFontSize(9.5);
+
+          items.forEach((item, index) => {
+            const labelWidth = pdf.getTextWidth(item.label);
+
+            if (index > 0) {
+              const separatorWidth = pdf.getTextWidth(' | ');
+              if (currentX > marginX && currentX + separatorWidth + labelWidth > maxX) {
+                currentX = marginX;
+                currentY += baselineGap;
+              } else {
+                setTextColor(theme.accentColor);
+                pdf.text(' | ', currentX, currentY);
+                currentX += separatorWidth;
+              }
+            } else if (currentX + labelWidth > maxX) {
+              currentY += baselineGap;
+              currentX = marginX;
+            }
+
+            setTextColor(item.href ? theme.accentColor : theme.textColor);
+            if (item.href) {
+              pdf.textWithLink(item.label, currentX, currentY, { url: item.href });
+            } else {
+              pdf.text(item.label, currentX, currentY);
+            }
+            currentX += labelWidth;
+          });
+
+          y = currentY + baselineGap;
+        };
+
         const drawBulletList = (bullets: string[]) => {
           bullets.filter(Boolean).forEach((bullet) => {
             const bulletLines = pdf.splitTextToSize(bullet.trim(), contentWidth - bulletIndent - 6);
@@ -1251,16 +1491,10 @@ ${result.missingKeywords.join(', ')}
         pdf.text(profile.fullName || 'Your Name', marginX, y);
         y += 20;
 
-        const headerLine = [profile.email?.trim(), profile.phone?.trim(), profile.location?.trim()]
-          .filter(Boolean)
-          .join(' | ');
+        const contactItems = buildContactItems(profile);
 
-        if (headerLine) {
-          drawWrappedText(headerLine, marginX, contentWidth, {
-            fontSize: 9.5,
-            lineGap: 12,
-            color: theme.accentColor,
-          });
+        if (contactItems.length) {
+          drawContactLine(contactItems);
           y += 12;
         }
 
@@ -1422,11 +1656,13 @@ ${result.missingKeywords.join(', ')}
   const SectionShell = ({
     title,
     sectionKey,
+    description,
     rightAction,
     children,
   }: {
     title: string;
     sectionKey: ResultSectionKey;
+    description?: string;
     rightAction?: React.ReactNode;
     children: React.ReactNode;
   }) => {
@@ -1440,13 +1676,50 @@ ${result.missingKeywords.join(', ')}
             onPress={() => toggleSection(sectionKey)}
             activeOpacity={0.8}
           >
-            <Text style={styles.resultTitle}>{title}</Text>
+            <View style={styles.resultHeaderText}>
+              <Text style={styles.resultTitle}>{title}</Text>
+              {description ? <Text style={styles.resultHeaderDescription}>{description}</Text> : null}
+            </View>
             <Text style={styles.collapseText}>{expanded ? 'Hide' : 'Show'}</Text>
           </TouchableOpacity>
-          {rightAction}
+          {expanded && rightAction ? <View style={styles.resultHeaderActions}>{rightAction}</View> : null}
         </View>
 
         {expanded ? children : null}
+      </View>
+    );
+  };
+
+  const EntryEditorShell = ({
+    panelKey,
+    title,
+    subtitle,
+    children,
+  }: {
+    panelKey: string;
+    title: string;
+    subtitle?: string;
+    children: React.ReactNode;
+  }) => {
+    const expanded = expandedEntryEditor === panelKey;
+
+    return (
+      <View style={styles.editorItemCard}>
+        <TouchableOpacity
+          style={styles.editorItemHeaderButton}
+          onPress={() => toggleEntryEditor(panelKey)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.editorItemHeader}>
+            <View style={styles.editorItemHeaderText}>
+              <Text style={styles.editorItemTitle}>{title}</Text>
+              {subtitle ? <Text style={styles.editorItemSubtitle}>{subtitle}</Text> : null}
+            </View>
+            <Text style={styles.copyText}>{expanded ? 'Hide' : 'Edit'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {expanded ? <View style={styles.editorItemBody}>{children}</View> : null}
       </View>
     );
   };
@@ -1476,7 +1749,7 @@ ${result.missingKeywords.join(', ')}
         <View style={styles.resultCard}>
           <Text style={styles.resultTitle}>Save This Version</Text>
           <TextInput
-            style={[styles.editInput, { marginTop: 12 }]}
+            style={styles.saveTitleInput}
             value={saveTitle}
             onChangeText={setSaveTitle}
             placeholder="e.g. Shopify SWE Intern Resume"
@@ -1547,9 +1820,78 @@ ${result.missingKeywords.join(', ')}
           )}
         </SectionShell>
 
+        {atsInsights ? (
+          <SectionShell
+            title="ATS Match"
+            sectionKey="ats"
+            description="Estimated alignment against the pasted job description"
+          >
+            <View style={styles.atsSummaryRow}>
+              <View>
+                <Text style={[styles.atsScoreValue, atsInsights.score < 50
+                  ? styles.atsScoreDanger
+                  : atsInsights.score < 70
+                    ? styles.atsScoreWarn
+                    : atsInsights.score < 90
+                      ? styles.atsScoreGood
+                      : styles.atsScoreExcellent]}
+                >
+                  {atsInsights.score}%
+                </Text>
+                <Text style={styles.atsScoreLabel}>{atsInsights.toneLabel}</Text>
+              </View>
+              <View style={styles.atsMetaWrap}>
+                <Text style={styles.atsMetaText}>
+                  {atsInsights.matchedCount} matching keyword
+                  {atsInsights.matchedCount === 1 ? '' : 's'} found
+                </Text>
+                <Text style={styles.atsMetaText}>
+                  {atsInsights.suggestedKeywords.length} suggested keyword
+                  {atsInsights.suggestedKeywords.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.atsTrack}>
+              <View
+                style={[
+                  styles.atsTrackFill,
+                  atsInsights.score < 50
+                    ? styles.atsTrackFillDanger
+                    : atsInsights.score < 70
+                      ? styles.atsTrackFillWarn
+                      : atsInsights.score < 90
+                        ? styles.atsTrackFillGood
+                        : styles.atsTrackFillExcellent,
+                  { width: `${atsInsights.score}%` },
+                ]}
+              />
+            </View>
+
+            <Text style={styles.atsHintText}>
+              Add more of the role-specific language below if it truthfully matches your experience.
+            </Text>
+
+            <View style={styles.keywordChipRow}>
+              {atsInsights.suggestedKeywords.length > 0 ? (
+                atsInsights.suggestedKeywords.map((keyword) => (
+                  <View key={keyword} style={styles.keywordChip}>
+                    <Text style={styles.keywordChipText}>{formatKeywordLabel(keyword)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.resultBody}>
+                  No obvious missing keywords right now. Your resume already covers the main language from the job post pretty well.
+                </Text>
+              )}
+            </View>
+          </SectionShell>
+        ) : null}
+
         <SectionShell
           title="Summary"
           sectionKey="summary"
+          description="Your headline pitch for this role"
           rightAction={
             <TouchableOpacity onPress={() => copySection(result.summary)}>
               <Text style={styles.copyText}>Copy</Text>
@@ -1565,9 +1907,18 @@ ${result.missingKeywords.join(', ')}
           />
         </SectionShell>
 
-        <SectionShell title="Education" sectionKey="education">
+        <SectionShell
+          title="Education"
+          sectionKey="education"
+          description={`${result.education.length} ${result.education.length === 1 ? 'entry' : 'entries'}`}
+        >
           {result.education.map((edu, index) => (
-            <View key={index} style={styles.blockItem}>
+            <EntryEditorShell
+              key={`education-${index}`}
+              panelKey={`education-${index}`}
+              title={edu.school || `Education ${index + 1}`}
+              subtitle={[edu.degree, edu.fieldOfStudy].filter(Boolean).join(', ') || 'Tap to edit this education entry'}
+            >
               <TextInput
                 style={styles.editInput}
                 value={edu.school}
@@ -1612,13 +1963,14 @@ ${result.missingKeywords.join(', ')}
                 placeholderTextColor="#8C8C8C"
                 textAlignVertical="top"
               />
-            </View>
+            </EntryEditorShell>
           ))}
         </SectionShell>
 
         <SectionShell
           title="Skills"
           sectionKey="skills"
+          description={`${result.skills.length} targeted skill${result.skills.length === 1 ? '' : 's'}`}
           rightAction={
             <TouchableOpacity onPress={() => copySection(result.skills.join(', '))}>
               <Text style={styles.copyText}>Copy</Text>
@@ -1636,9 +1988,18 @@ ${result.missingKeywords.join(', ')}
           />
         </SectionShell>
 
-        <SectionShell title="Projects" sectionKey="projects">
+        <SectionShell
+          title="Projects"
+          sectionKey="projects"
+          description={`${result.projects.length} ${result.projects.length === 1 ? 'entry' : 'entries'}`}
+        >
           {result.projects.map((project, index) => (
-            <View key={index} style={styles.blockItem}>
+            <EntryEditorShell
+              key={`project-${index}`}
+              panelKey={`project-${index}`}
+              title={project.name || `Project ${index + 1}`}
+              subtitle={project.role || 'Tap to edit this project entry'}
+            >
               <TextInput
                 style={styles.editInput}
                 value={project.name}
@@ -1667,13 +2028,22 @@ ${result.missingKeywords.join(', ')}
                   textAlignVertical="top"
                 />
               ))}
-            </View>
+            </EntryEditorShell>
           ))}
         </SectionShell>
 
-        <SectionShell title="Experience" sectionKey="experience">
+        <SectionShell
+          title="Experience"
+          sectionKey="experience"
+          description={`${result.experience.length} ${result.experience.length === 1 ? 'entry' : 'entries'}`}
+        >
           {result.experience.map((exp, index) => (
-            <View key={index} style={styles.blockItem}>
+            <EntryEditorShell
+              key={`experience-${index}`}
+              panelKey={`experience-${index}`}
+              title={exp.company || `Experience ${index + 1}`}
+              subtitle={exp.title || 'Tap to edit this experience entry'}
+            >
               <TextInput
                 style={styles.editInput}
                 value={exp.company}
@@ -1723,14 +2093,23 @@ ${result.missingKeywords.join(', ')}
                   textAlignVertical="top"
                 />
               ))}
-            </View>
+            </EntryEditorShell>
           ))}
         </SectionShell>
 
         {result.certifications.length > 0 && (
-          <SectionShell title="Certifications" sectionKey="certifications">
+          <SectionShell
+            title="Certifications"
+            sectionKey="certifications"
+            description={`${result.certifications.length} ${result.certifications.length === 1 ? 'entry' : 'entries'}`}
+          >
             {result.certifications.map((cert, index) => (
-              <View key={index} style={styles.blockItem}>
+              <EntryEditorShell
+                key={`certification-${index}`}
+                panelKey={`certification-${index}`}
+                title={cert.name || `Certification ${index + 1}`}
+                subtitle={cert.issuer || 'Tap to edit this certification entry'}
+              >
                 <TextInput
                   style={styles.editInput}
                   value={cert.name}
@@ -1775,30 +2154,10 @@ ${result.missingKeywords.join(', ')}
                   placeholderTextColor="#8C8C8C"
                   textAlignVertical="top"
                 />
-              </View>
+              </EntryEditorShell>
             ))}
           </SectionShell>
         )}
-
-        <SectionShell
-          title="Missing Keywords"
-          sectionKey="keywords"
-          rightAction={
-            <TouchableOpacity onPress={() => copySection(result.missingKeywords.join(', '))}>
-              <Text style={styles.copyText}>Copy</Text>
-            </TouchableOpacity>
-          }
-        >
-          <TextInput
-            style={[styles.editInput, styles.editTextArea]}
-            multiline
-            value={result.missingKeywords.join(', ')}
-            onChangeText={updateMissingKeywords}
-            placeholder="Comma-separated keywords"
-            placeholderTextColor="#8C8C8C"
-            textAlignVertical="top"
-          />
-        </SectionShell>
       </>
     );
   };
@@ -1820,10 +2179,10 @@ ${result.missingKeywords.join(', ')}
     (!profile?.experience || profile.experience.every((item) => !item.company && !item.title)) &&
     (!profile?.projects || profile.projects.every((item) => !item.name));
 
-  const contentContainerStyles = [
+  const contentContainerStyle = StyleSheet.flatten([
     styles.contentContainer,
-    !isDesktop && styles.contentContainerCompact,
-  ];
+    !isDesktop ? styles.contentContainerCompact : null,
+  ]) as ViewStyle;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1834,7 +2193,7 @@ ${result.missingKeywords.join(', ')}
       >
         <ScrollView
           style={styles.screen}
-          contentContainerStyle={contentContainerStyles}
+          contentContainerStyle={contentContainerStyle}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
@@ -2005,11 +2364,11 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 24,
   },
   desktopLeft: {
     flex: 0.95,
     minWidth: 0,
+    marginRight: 24,
   },
   desktopRight: {
     flex: 1.1,
@@ -2018,10 +2377,10 @@ const styles = StyleSheet.create({
   mobileStack: {
     width: '100%',
     flexDirection: 'column',
-    gap: 20,
   },
   mobileStackSection: {
     width: '100%',
+    marginBottom: 20,
   },
   loadingWrap: {
     flex: 1,
@@ -2129,14 +2488,12 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginTop: 2,
     marginBottom: 18,
   },
   styleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
     marginTop: 4,
     marginBottom: 18,
   },
@@ -2227,8 +2584,8 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginTop: 12,
+    marginHorizontal: -5,
   },
   primaryButtonCompact: {
     backgroundColor: '#2563EB',
@@ -2238,6 +2595,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
+    marginHorizontal: 5,
+    marginBottom: 10,
   },
   primaryButtonCompactText: {
     color: '#FFFFFF',
@@ -2254,6 +2613,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: '#BFDBFE',
+    marginHorizontal: 5,
+    marginBottom: 10,
   },
   secondaryButtonCompactText: {
     color: '#2563EB',
@@ -2280,36 +2641,92 @@ const styles = StyleSheet.create({
   resultHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 10,
   },
   resultHeaderLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    flex: 1,
+    paddingRight: 8,
+  },
+  resultHeaderActions: {
+    marginLeft: 12,
+    alignSelf: 'center',
+  },
+  resultHeaderText: {
+    flex: 1,
   },
   resultTitle: {
     color: '#1E293B',
     fontWeight: '800',
     fontSize: 15,
   },
+  resultHeaderDescription: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 2,
+  },
   collapseText: {
     color: '#64748B',
     fontWeight: '700',
     fontSize: 12,
+    marginLeft: 12,
+    marginTop: 2,
   },
   copyText: {
     color: '#2563EB',
     fontWeight: '700',
     fontSize: 13,
   },
+  saveTitleInput: {
+    marginTop: 12,
+  },
   resultBody: {
     color: '#1E293B',
     fontSize: 15,
     lineHeight: 23,
   },
-  blockItem: {
+  editorItemCard: {
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    overflow: 'hidden',
+  },
+  editorItemHeaderButton: {
+    width: '100%',
+  },
+  editorItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  editorItemHeaderText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  editorItemTitle: {
+    color: '#1E293B',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  editorItemSubtitle: {
+    color: '#64748B',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  editorItemBody: {
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingBottom: 14,
   },
   editInput: {
     backgroundColor: '#FFFFFF',
@@ -2342,6 +2759,97 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  atsSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+  },
+  atsScoreValue: {
+    fontSize: 34,
+    fontWeight: '900',
+    lineHeight: 38,
+  },
+  atsScoreDanger: {
+    color: '#EF4444',
+  },
+  atsScoreWarn: {
+    color: '#F59E0B',
+  },
+  atsScoreGood: {
+    color: '#84CC16',
+  },
+  atsScoreExcellent: {
+    color: '#15803D',
+  },
+  atsScoreLabel: {
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  atsMetaWrap: {
+    alignItems: 'flex-start',
+    flexShrink: 1,
+    marginTop: 4,
+  },
+  atsMetaText: {
+    color: '#64748B',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'left',
+    marginTop: 4,
+  },
+  atsTrack: {
+    width: '100%',
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginTop: 18,
+  },
+  atsTrackFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  atsTrackFillDanger: {
+    backgroundColor: '#EF4444',
+  },
+  atsTrackFillWarn: {
+    backgroundColor: '#F59E0B',
+  },
+  atsTrackFillGood: {
+    backgroundColor: '#84CC16',
+  },
+  atsTrackFillExcellent: {
+    backgroundColor: '#15803D',
+  },
+  atsHintText: {
+    color: '#64748B',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  keywordChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 14,
+  },
+  keywordChip: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#CBD5E1',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  keywordChipText: {
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   savedVersionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
@@ -2362,8 +2870,8 @@ const styles = StyleSheet.create({
   },
   savedVersionActions: {
     flexDirection: 'row',
-    gap: 8,
     marginTop: 10,
+    marginHorizontal: -4,
   },
   savedVersionButton: {
     backgroundColor: '#EFF6FF',
@@ -2372,6 +2880,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#BFDBFE',
+    marginHorizontal: 4,
+    marginBottom: 8,
   },
   savedVersionButtonText: {
     color: '#2563EB',
@@ -2385,6 +2895,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#FECACA',
+    marginHorizontal: 4,
+    marginBottom: 8,
   },
   savedVersionDeleteButtonText: {
     color: '#DC2626',

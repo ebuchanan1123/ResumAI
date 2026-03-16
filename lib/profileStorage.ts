@@ -41,6 +41,8 @@ export type UserProfile = {
   email: string;
   phone: string;
   location: string;
+  linkedinUrl: string;
+  githubUrl: string;
   summaryHint: string;
   skills: string;
   education: EducationItem[];
@@ -92,6 +94,8 @@ export const createEmptyProfile = (): UserProfile => ({
   email: '',
   phone: '',
   location: '',
+  linkedinUrl: '',
+  githubUrl: '',
   summaryHint: '',
   skills: '',
   education: [],

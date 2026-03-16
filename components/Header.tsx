@@ -9,85 +9,97 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+function NavLinks({ mobile = false, compact = false }: { mobile?: boolean; compact?: boolean }) {
+  const itemStyle = mobile
+    ? compact
+      ? styles.mobileNavItemCompact
+      : styles.mobileNavItem
+    : styles.desktopNavItem;
+  const textStyle = mobile ? styles.mobileNavText : styles.desktopNavText;
+
+  return (
+    <>
+      <Link href="/bullets" asChild>
+        <TouchableOpacity style={itemStyle}>
+          <Text style={textStyle}>Bullet AI</Text>
+        </TouchableOpacity>
+      </Link>
+
+      <Link href="/cover-letter" asChild>
+        <TouchableOpacity style={itemStyle}>
+          <Text style={textStyle}>Cover Letter</Text>
+        </TouchableOpacity>
+      </Link>
+
+      <Link href="/resume" asChild>
+        <TouchableOpacity style={itemStyle}>
+          <Text style={textStyle}>Resume Generator</Text>
+        </TouchableOpacity>
+      </Link>
+
+      <Link href="/profile" asChild>
+        <TouchableOpacity style={itemStyle}>
+          <Text style={textStyle}>Profile</Text>
+        </TouchableOpacity>
+      </Link>
+    </>
+  );
+}
+
 export default function Header() {
   const { width } = useWindowDimensions();
-  const isSmall = width < 900;
-  const isVerySmall = width < 700;
-  const isCompactMobile = width < 520;
 
-  if (isSmall) {
+  if (width < 520) {
     return (
       <View style={styles.header}>
         <View style={styles.inner}>
-          <View style={[styles.mobileTopRow, isCompactMobile && styles.mobileTopRowCompact]}>
+          <View style={styles.compactTopRow}>
             <Link href="/" asChild>
-              <TouchableOpacity style={[styles.logoWrap, isCompactMobile && styles.logoWrapCompact]}>
+              <TouchableOpacity style={styles.centeredLogoWrap}>
+                <Image source={require('../assets/logo.png')} style={styles.logoCompact} />
+              </TouchableOpacity>
+            </Link>
+
+            <Link href="/profile" asChild>
+              <TouchableOpacity style={styles.compactCta}>
+                <Text style={styles.compactCtaText}>Create Resume</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+
+          <View style={styles.compactNavGrid}>
+            <NavLinks mobile compact />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (width < 1120) {
+    return (
+      <View style={styles.header}>
+        <View style={styles.inner}>
+          <View style={styles.mobileTopRow}>
+            <Link href="/" asChild>
+              <TouchableOpacity style={styles.logoWrap}>
                 <Image
                   source={require('../assets/logo.png')}
-                  style={
-                    isCompactMobile
-                      ? styles.logoCompact
-                      : isVerySmall
-                        ? styles.logoSmall
-                        : styles.logo
-                  }
+                  style={width < 700 ? styles.logoSmall : styles.logo}
                 />
               </TouchableOpacity>
             </Link>
 
             <Link href="/profile" asChild>
-              <TouchableOpacity
-                style={[
-                  isCompactMobile ? styles.ctaCompact : isVerySmall ? styles.ctaSmall : styles.cta,
-                ]}
-              >
-                <Text
-                  style={[
-                    isCompactMobile
-                      ? styles.ctaTextCompact
-                      : isVerySmall
-                        ? styles.ctaTextSmall
-                        : styles.ctaText,
-                  ]}
-                >
+              <TouchableOpacity style={width < 700 ? styles.smallCta : styles.desktopCta}>
+                <Text style={width < 700 ? styles.smallCtaText : styles.desktopCtaText}>
                   Create Resume
                 </Text>
               </TouchableOpacity>
             </Link>
           </View>
 
-          <View style={[styles.mobileNavRowPlain, isCompactMobile && styles.mobileNavRowCompact]}>
-            <Link href="/bullets" asChild>
-              <TouchableOpacity
-                style={[styles.mobilePlainNavItem, isCompactMobile && styles.mobilePlainNavItemCompact]}
-              >
-                <Text style={styles.mobilePlainNavText}>Bullet AI</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/cover-letter" asChild>
-              <TouchableOpacity
-                style={[styles.mobilePlainNavItem, isCompactMobile && styles.mobilePlainNavItemCompact]}
-              >
-                <Text style={styles.mobilePlainNavText}>Cover Letter</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/resume" asChild>
-              <TouchableOpacity
-                style={[styles.mobilePlainNavItem, isCompactMobile && styles.mobilePlainNavItemCompact]}
-              >
-                <Text style={styles.mobilePlainNavText}>Resume Generator</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/profile" asChild>
-              <TouchableOpacity
-                style={[styles.mobilePlainNavItem, isCompactMobile && styles.mobilePlainNavItemCompact]}
-              >
-                <Text style={styles.mobilePlainNavText}>Profile</Text>
-              </TouchableOpacity>
-            </Link>
+          <View style={styles.mobileNavRow}>
+            <NavLinks mobile />
           </View>
         </View>
       </View>
@@ -100,42 +112,17 @@ export default function Header() {
         <View style={styles.desktopRow}>
           <Link href="/" asChild>
             <TouchableOpacity style={styles.logoWrap}>
-              <Image
-                source={require('../assets/logo.png')}
-                style={styles.logo}
-              />
+              <Image source={require('../assets/logo.png')} style={styles.logo} />
             </TouchableOpacity>
           </Link>
 
           <View style={styles.desktopCenterNav}>
-            <Link href="/bullets" asChild>
-              <TouchableOpacity style={styles.navItem}>
-                <Text style={styles.navText}>Bullet AI</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/cover-letter" asChild>
-              <TouchableOpacity style={styles.navItem}>
-                <Text style={styles.navText}>Cover Letter</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/resume" asChild>
-              <TouchableOpacity style={styles.navItem}>
-                <Text style={styles.navText}>Resume Generator</Text>
-              </TouchableOpacity>
-            </Link>
-
-            <Link href="/profile" asChild>
-              <TouchableOpacity style={styles.navItem}>
-                <Text style={styles.navText}>Profile</Text>
-              </TouchableOpacity>
-            </Link>
+            <NavLinks />
           </View>
 
           <Link href="/profile" asChild>
-            <TouchableOpacity style={styles.cta}>
-              <Text style={styles.ctaText}>Create Resume</Text>
+            <TouchableOpacity style={styles.desktopCta}>
+              <Text style={styles.desktopCtaText}>Create Resume</Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -158,7 +145,6 @@ const styles = StyleSheet.create({
     maxWidth: 1240,
     alignSelf: 'center',
   },
-
   desktopRow: {
     minHeight: 64,
     flexDirection: 'row',
@@ -168,38 +154,45 @@ const styles = StyleSheet.create({
   desktopCenterNav: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginHorizontal: 16,
   },
-
   mobileTopRow: {
     minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  mobileTopRowCompact: {
+  compactTopRow: {
+    minHeight: 64,
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 12,
   },
-  mobileNavRowPlain: {
+  mobileNavRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     flexWrap: 'wrap',
     paddingTop: 8,
+    marginHorizontal: -6,
   },
-  mobileNavRowCompact: {
+  compactNavGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 0,
+    flexWrap: 'wrap',
+    paddingTop: 8,
+    marginHorizontal: -4,
   },
-
   logoWrap: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoWrapCompact: {
+  centeredLogoWrap: {
+    justifyContent: 'center',
+    alignItems: 'center',
     alignSelf: 'center',
   },
   logo: {
@@ -217,63 +210,65 @@ const styles = StyleSheet.create({
     height: 48,
     resizeMode: 'contain',
   },
-
-  navItem: {
+  desktopNavItem: {
     paddingHorizontal: 14,
     paddingVertical: 8,
+    marginHorizontal: 2,
   },
-  navText: {
+  desktopNavText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#334155',
   },
-
-  mobilePlainNavItem: {
+  mobileNavItem: {
     paddingHorizontal: 12,
     paddingVertical: 8,
+    marginHorizontal: 6,
   },
-  mobilePlainNavItemCompact: {
+  mobileNavItemCompact: {
     width: '50%',
     alignItems: 'center',
     paddingHorizontal: 6,
+    paddingVertical: 8,
+    marginBottom: 4,
   },
-  mobilePlainNavText: {
+  mobileNavText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#334155',
     textAlign: 'center',
   },
-
-  cta: {
+  desktopCta: {
     backgroundColor: '#2563EB',
     paddingHorizontal: 22,
     paddingVertical: 12,
     borderRadius: 14,
   },
-  ctaSmall: {
+  desktopCtaText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  smallCta: {
     backgroundColor: '#2563EB',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
   },
-  ctaCompact: {
+  smallCtaText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  compactCta: {
     backgroundColor: '#2563EB',
     paddingHorizontal: 16,
     paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
+    marginTop: 12,
   },
-  ctaText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  ctaTextSmall: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  ctaTextCompact: {
+  compactCtaText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
