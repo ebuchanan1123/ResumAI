@@ -509,7 +509,7 @@ export default function ProfileScreen() {
               <Text style={styles.overviewText}>
                 {profileCompletionText} with {renderCountLabel(profile.experience.length, 'role')},{' '}
                 {renderCountLabel(profile.projects.length, 'project')}, and{' '}
-                {renderCountLabel(profile.education.length, 'education entry')}.
+                {renderCountLabel(profile.education.length, 'education entries')}.
               </Text>
             </View>
             <View style={[styles.overviewBadge, isNarrowScreen && styles.overviewBadgeNarrow]}>

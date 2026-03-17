@@ -80,22 +80,26 @@ export default function Header() {
       <View style={styles.header}>
         <View style={styles.inner}>
           <View style={styles.mobileTopRow}>
-            <Link href="/" asChild>
-              <TouchableOpacity style={styles.logoWrap}>
-                <Image
-                  source={require('../assets/logo.png')}
-                  style={width < 700 ? styles.logoSmall : styles.logo}
-                />
-              </TouchableOpacity>
-            </Link>
+            <View style={styles.mobileBrandSlot}>
+              <Link href="/" asChild>
+                <TouchableOpacity style={styles.logoWrap}>
+                  <Image
+                    source={require('../assets/logo.png')}
+                    style={width < 700 ? styles.logoSmall : styles.logo}
+                  />
+                </TouchableOpacity>
+              </Link>
+            </View>
 
-            <Link href="/profile" asChild>
-              <TouchableOpacity style={width < 700 ? styles.smallCta : styles.desktopCta}>
-                <Text style={width < 700 ? styles.smallCtaText : styles.desktopCtaText}>
-                  Create Resume
-                </Text>
-              </TouchableOpacity>
-            </Link>
+            <View style={styles.mobileActionSlot}>
+              <Link href="/profile" asChild>
+                <TouchableOpacity style={width < 700 ? styles.smallCta : styles.desktopCta}>
+                  <Text style={width < 700 ? styles.smallCtaText : styles.desktopCtaText}>
+                    Create Resume
+                  </Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
           </View>
 
           <View style={styles.mobileNavRow}>
@@ -110,21 +114,25 @@ export default function Header() {
     <View style={styles.header}>
       <View style={styles.inner}>
         <View style={styles.desktopRow}>
-          <Link href="/" asChild>
-            <TouchableOpacity style={styles.logoWrap}>
-              <Image source={require('../assets/logo.png')} style={styles.logo} />
-            </TouchableOpacity>
-          </Link>
+          <View style={styles.desktopBrandSlot}>
+            <Link href="/" asChild>
+              <TouchableOpacity style={styles.logoWrap}>
+                <Image source={require('../assets/logo.png')} style={styles.logo} />
+              </TouchableOpacity>
+            </Link>
+          </View>
 
           <View style={styles.desktopCenterNav}>
             <NavLinks />
           </View>
 
-          <Link href="/profile" asChild>
-            <TouchableOpacity style={styles.desktopCta}>
-              <Text style={styles.desktopCtaText}>Create Resume</Text>
-            </TouchableOpacity>
-          </Link>
+          <View style={styles.desktopActionSlot}>
+            <Link href="/profile" asChild>
+              <TouchableOpacity style={styles.desktopCta}>
+                <Text style={styles.desktopCtaText}>Create Resume</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
         </View>
       </View>
     </View>
@@ -159,16 +167,40 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginHorizontal: 16,
   },
+  desktopBrandSlot: {
+    width: 240,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  desktopActionSlot: {
+    width: 190,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   mobileTopRow: {
     minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  mobileBrandSlot: {
+    flex: 1,
+    minWidth: 180,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  mobileActionSlot: {
+    minWidth: 150,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   compactTopRow: {
     minHeight: 64,
     flexDirection: 'column',
-    alignItems: 'stretch',
+    alignItems: 'center',
   },
   mobileNavRow: {
     flexDirection: 'row',
@@ -267,6 +299,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 12,
+    alignSelf: 'center',
   },
   compactCtaText: {
     color: '#FFFFFF',
