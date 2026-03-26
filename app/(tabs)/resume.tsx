@@ -790,9 +790,13 @@ ${cert.details || ''}`.trim()
 
     const coverageRatio =
       extractedKeywords.length === 0 ? 1 : matchedKeywords.length / extractedKeywords.length;
-    const score = Math.round(
+    let score = Math.round(
       Math.min(100, 22 + coverageRatio * 72 + Math.min(matchedKeywords.length, 6))
     );
+
+    if (suggestedKeywords.length === 0) {
+      score = Math.max(score, Math.min(92, 74 + matchedKeywords.length * 3));
+    }
 
     let toneLabel = 'Strong alignment';
     let color = '#15803D';
