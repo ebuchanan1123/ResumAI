@@ -319,8 +319,20 @@ Rules:
 - Keep education near the top when it is relevant to the role
 - Select the most relevant experience and projects instead of trying to include everything
 - Write strong bullet points starting with action verbs
+- Sound confident and technically credible, but stay fully truthful
+- Favor sharper, more specific language over generic phrasing
+- For project bullets, emphasize architecture, integrations, deployment, data flow, APIs, AI features, databases, authentication, and product readiness when supported by the profile
+- For project bullets, make the first bullet a standout summary line that quickly explains what the product/system is and why it is impressive
+- For both project and experience bullets, emphasize scope, ownership, technical depth, and outcomes when they are supported by the profile
+- If metrics are not available, use concrete engineering impact instead of inventing numbers
+- Prefer bullets that make a recruiter curious enough to click links or ask follow-up questions
+- When supported by the profile, make project names slightly more descriptive and compelling without becoming long or flashy
+- If a project is deployed, production-ready, user-facing, or a live product based on the profile, reflect that signal naturally in the wording
 - For skills, return the most relevant skills for this role
 - Include relevant certifications when they strengthen the application
+- For summary, sound polished, ambitious, and specific; avoid weak filler phrases
+- For missingKeywords, include only high-value role-specific technical terms or domain terms that are clearly relevant and truly absent
+- Do not include duplicate, overlapping, generic, or low-signal missing keywords
 - Keep the tone: ${tone || 'Technical'}
 
 User Profile:
