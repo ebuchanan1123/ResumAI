@@ -253,38 +253,87 @@ const normalizePdfText = (value: string) =>
     .replace(/\u00A0/g, ' ')
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ');
 
-const toFilenameSlug = (value: string) =>
+const toFilenamePart = (value: string) =>
   (value || '')
     .trim()
     .replace(/&/g, ' and ')
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/_+/g, '_');
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const COMPANY_NAME_BLOCKLIST = new Set([
+  'job description',
+  'about the role',
+  'about this role',
+  'about the team',
+  'about us',
+  'about',
+  'responsibilities',
+  'requirements',
+  'qualifications',
+  'preferred qualifications',
+  'what you will do',
+  'what you ll do',
+  'what we are looking for',
+  'who you are',
+  'overview',
+  'summary',
+  'position summary',
+  'internship',
+  'intern',
+  'full time',
+  'part time',
+  'remote',
+  'hybrid',
+  'onsite',
+]);
+
+const cleanCompanyCandidate = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .replace(/[\s,.:;|/-]+$/g, '');
+
+const isLikelyCompanyName = (value: string) => {
+  const candidate = cleanCompanyCandidate(value);
+  if (!candidate) return false;
+  if (candidate.length < 2 || candidate.length > 50) return false;
+
+  const lower = candidate.toLowerCase();
+  if (COMPANY_NAME_BLOCKLIST.has(lower)) return false;
+
+  const words = candidate.split(' ').filter(Boolean);
+  if (words.length > 5) return false;
+
+  const hasCompanySuffix = /\b(inc|corp|llc|ltd|limited|technologies|technology|systems|software|solutions|labs|lab|group|company|co)\b/i.test(candidate);
+  const hasCapitalizedWord = words.some((word) => /^[A-Z][A-Za-z0-9&'.-]*$/.test(word));
+  const hasMixedCaseBrand = /[A-Z].*[a-z]|[a-z].*[A-Z]/.test(candidate);
+
+  return hasCompanySuffix || hasCapitalizedWord || hasMixedCaseBrand;
+};
 
 const extractCompanyName = (jobDescription: string) => {
   const lines = jobDescription
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 12);
+    .slice(0, 18);
 
   const patterns = [
-    /\b(?:at|join|with|for)\s+([A-Z][A-Za-z0-9&.,' -]{1,40})/,
-    /\bcompany\s*:\s*([A-Z][A-Za-z0-9&.,' -]{1,40})/i,
-    /\babout\s+([A-Z][A-Za-z0-9&.,' -]{1,40})/,
+    /\bcompany\s*:\s*([A-Z][A-Za-z0-9&.,' -]{1,50})/i,
+    /\b(?:about|join|at|with)\s+([A-Z][A-Za-z0-9&.,' -]{1,50})/i,
+    /\b([A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,3})\s+is\s+(?:a|an|the)\b/,
+    /\b([A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,3})\s+(?:is hiring|is looking|seeks|seeking)\b/i,
   ];
 
   for (const line of lines) {
     for (const pattern of patterns) {
       const match = line.match(pattern);
-      const candidate = match?.[1]?.trim().replace(/[.,:;|/-]+$/g, '');
-      if (candidate && candidate.split(' ').length <= 5) {
+      const candidate = cleanCompanyCandidate(match?.[1] || '');
+      if (isLikelyCompanyName(candidate)) {
         return candidate;
       }
-    }
-
-    if (/^[A-Z][A-Za-z0-9&.,' -]{1,40}$/.test(line) && line.split(' ').length <= 5) {
-      return line.replace(/[.,:;|/-]+$/g, '');
     }
   }
 
@@ -292,12 +341,12 @@ const extractCompanyName = (jobDescription: string) => {
 };
 
 const buildResumePdfFilename = (profile: UserProfile | null, jobDescription: string) => {
-  const namePart = toFilenameSlug(profile?.fullName || 'resume') || 'resume';
-  const companyPart = toFilenameSlug(extractCompanyName(jobDescription));
+  const namePart = toFilenamePart(profile?.fullName || 'Resume') || 'Resume';
+  const companyPart = toFilenamePart(extractCompanyName(jobDescription));
 
   return companyPart
-    ? `${namePart}_${companyPart}_resume.pdf`
-    : `${namePart}_resume.pdf`;
+    ? `${namePart} ${companyPart} resume.pdf`
+    : `${namePart} resume.pdf`;
 };
 
 const ATS_STOP_WORDS = new Set([
