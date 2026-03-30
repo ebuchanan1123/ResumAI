@@ -49,6 +49,12 @@ const profileImportLimiter = createLimiter({
   message: 'Profile import limit reached for this IP today. Please try again tomorrow.',
 });
 
+const jobImportLimiter = createLimiter({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  message: 'Job import limit reached for this IP today. Please try again tomorrow.',
+});
+
 app.use(generalLimiter);
 
 app.use(cors());
@@ -69,6 +75,47 @@ const trimTextForModel = (value = '', maxChars = 4500) => {
   return `${normalized.slice(0, maxChars).trim()}...`;
 };
 
+const extractMetaTag = (html = '', name) => {
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'),
+    new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${name}["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return compactWhitespace(
+        match[1]
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+      );
+    }
+  }
+
+  return '';
+};
+
+const extractTitleTag = (html = '') => {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match?.[1] ? compactWhitespace(match[1]) : '';
+};
+
+const stripHtml = (html = '') =>
+  compactWhitespace(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+  );
+
 app.get('/', (req, res) => {
   res.json({ message: 'Backend is running' });
 });
@@ -78,6 +125,144 @@ app.get('/health', (req, res) => {
     ok: true,
     service: 'ResumAI backend',
   });
+});
+
+app.post('/import-job', jobImportLimiter, async (req, res) => {
+  try {
+    const { jobUrl } = req.body;
+
+    if (!jobUrl || typeof jobUrl !== 'string') {
+      return res.status(400).json({
+        error: 'Missing or invalid job URL.',
+      });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(jobUrl);
+    } catch {
+      return res.status(400).json({
+        error: 'Please enter a valid job URL.',
+      });
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({
+        error: 'Only http and https job URLs are supported.',
+      });
+    }
+
+    const response = await fetch(parsedUrl.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      return res.status(400).json({
+        error: 'Failed to fetch that job posting. Try pasting the description manually instead.',
+      });
+    }
+
+    const html = await response.text();
+    const titleHint =
+      extractMetaTag(html, 'og:title') ||
+      extractMetaTag(html, 'twitter:title') ||
+      extractTitleTag(html);
+    const descriptionHint =
+      extractMetaTag(html, 'og:description') ||
+      extractMetaTag(html, 'twitter:description') ||
+      extractMetaTag(html, 'description');
+    const bodyText = trimTextForModel(stripHtml(html), 12000);
+
+    const prompt = `
+You are an expert job posting parser.
+
+Extract structured job data from the fetched page content.
+
+Return valid JSON only in this exact structure:
+{
+  "title": "string",
+  "company": "string",
+  "location": "string",
+  "description": "string",
+  "requirements": ["string"],
+  "keywords": ["string"],
+  "parseSucceeded": true
+}
+
+Rules:
+- Use only information clearly supported by the page content
+- Do not invent missing details
+- Prefer the actual employer name over the recruiting platform name
+- Keep requirements to the most important 4 to 6 lines
+- Keep keywords to high-signal technical or domain terms only
+- If parsing is weak or uncertain, set "parseSucceeded" to false
+- If a field is unavailable, return an empty string or empty array
+
+Source host:
+${parsedUrl.hostname}
+
+Title hint:
+${titleHint}
+
+Description hint:
+${descriptionHint}
+
+Fetched page text:
+${bodyText}
+`;
+
+    const parsed = await client.responses.create({
+      model: 'gpt-5-mini',
+      input: prompt,
+    });
+
+    const text = (parsed.output_text || '').trim();
+
+    let job;
+    try {
+      job = JSON.parse(text);
+    } catch {
+      console.error('JSON PARSE ERROR /import-job:', text);
+      return res.status(500).json({
+        error: 'Failed to parse job posting.',
+      });
+    }
+
+    const requirements = Array.isArray(job.requirements)
+      ? job.requirements.map((item) => compactWhitespace(String(item))).filter(Boolean).slice(0, 6)
+      : [];
+    const keywords = Array.isArray(job.keywords)
+      ? job.keywords.map((item) => compactWhitespace(String(item))).filter(Boolean).slice(0, 8)
+      : [];
+
+    const description = compactWhitespace(job.description || '');
+    const jobDescriptionText = [description, requirements.length ? `Key requirements:\n- ${requirements.join('\n- ')}` : '']
+      .filter(Boolean)
+      .join('\n\n');
+
+    return res.json({
+      title: compactWhitespace(job.title || ''),
+      company: compactWhitespace(job.company || ''),
+      location: compactWhitespace(job.location || ''),
+      description,
+      requirements,
+      keywords,
+      sourceUrl: parsedUrl.toString(),
+      parseSucceeded: Boolean(job.parseSucceeded),
+      jobDescriptionText,
+    });
+  } catch (error) {
+    console.error('OPENAI ERROR /import-job:', error);
+
+    return res.status(500).json({
+      error: error?.message || 'Failed to import job posting.',
+    });
+  }
 });
 
 app.post('/parse-profile', profileImportLimiter, async (req, res) => {
@@ -253,7 +438,7 @@ ${hasJobDescription ? `Target Job Description:\n${jobDescription}` : ''}
 
 app.post('/tailor-resume', resumeLimiter, async (req, res) => {
   try {
-    const { profile, jobDescription, tone } = req.body;
+    const { profile, jobDescription, tone, optimizationMode } = req.body;
 
     if (
       !profile ||
@@ -268,6 +453,39 @@ app.post('/tailor-resume', resumeLimiter, async (req, res) => {
 
     const trimmedJobDescription = trimTextForModel(jobDescription, 4500);
     const compactProfileJson = JSON.stringify(profile);
+    const modeGuidanceMap = {
+      'ATS-first': [
+        'Maximize alignment with the target job posting while staying truthful.',
+        'Prioritize exact role terminology, clearer section language, and high-signal keywords.',
+      ],
+      'Recruiter-friendly': [
+        'Optimize for readability, flow, and strong first impression in a short skim.',
+        'Prefer smooth phrasing and fast scanning over density.',
+      ],
+      'Technical-heavy': [
+        'Emphasize stack choices, architecture, APIs, databases, AI integrations, deployment, and engineering ownership.',
+        'Use more systems language where supported by the profile.',
+      ],
+      Concise: [
+        'Keep wording tighter, trim fluff aggressively, and prefer punchy bullets over longer explanations.',
+      ],
+      'Leadership/impact': [
+        'Highlight initiative, ownership, collaboration, and concrete outcomes where supported.',
+        'Prefer language that signals decision-making or delivery impact.',
+      ],
+      'Entry-level student': [
+        'Optimize for an early-career student candidate.',
+        'Prioritize relevant projects, coursework, and transferable technical experience over weak unrelated experience.',
+      ],
+      'Startup-focused': [
+        'Emphasize product building, shipping, iteration speed, ownership, and cross-functional execution where supported.',
+        'Make projects feel like real products rather than class assignments when truthful.',
+      ],
+    };
+    const selectedMode = typeof optimizationMode === 'string' ? optimizationMode : 'Recruiter-friendly';
+    const modeGuidance = (modeGuidanceMap[selectedMode] || modeGuidanceMap['Recruiter-friendly']).join(
+      '\n- '
+    );
 
     const prompt = `
 You are an expert technical resume writer.
@@ -334,6 +552,9 @@ Rules:
 - For missingKeywords, include only high-value role-specific technical terms or domain terms that are clearly relevant and truly absent
 - Do not include duplicate, overlapping, generic, or low-signal missing keywords
 - Keep the tone: ${tone || 'Technical'}
+- Optimization mode: ${selectedMode}
+- Mode-specific priorities:
+- ${modeGuidance}
 
 User Profile:
 ${compactProfileJson}

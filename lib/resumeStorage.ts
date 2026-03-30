@@ -1,6 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserProfile } from '@/lib/profileStorage';
 
+export type ResumeOptimizationMode =
+  | 'ATS-first'
+  | 'Recruiter-friendly'
+  | 'Technical-heavy'
+  | 'Concise'
+  | 'Leadership/impact'
+  | 'Entry-level student'
+  | 'Startup-focused';
+
 export type TailoredResumeResponse = {
   summary: string;
   skills: string[];
@@ -41,6 +50,7 @@ export type SavedResumeVersion = {
   title: string;
   createdAt: string;
   tone: string;
+  optimizationMode?: ResumeOptimizationMode;
   jobDescription: string;
   profileName: string;
   result: TailoredResumeResponse;
@@ -50,16 +60,29 @@ const RESUME_VERSIONS_KEY = 'resumai_saved_resume_versions';
 const CURRENT_RESUME_DRAFT_KEY = 'resumai_current_resume_draft';
 
 export type ResumeDraft = {
+  jobUrl: string;
+  importedJobPreview: {
+    title: string;
+    company: string;
+    location: string;
+    keywords: string[];
+    sourceUrl: string;
+    parseSucceeded: boolean;
+  } | null;
   jobDescription: string;
   tone: string;
+  optimizationMode: ResumeOptimizationMode;
   resumeStyle: string;
   saveTitle: string;
   result: TailoredResumeResponse | null;
 };
 
 const createEmptyResumeDraft = (): ResumeDraft => ({
+  jobUrl: '',
+  importedJobPreview: null,
   jobDescription: '',
   tone: 'Technical',
+  optimizationMode: 'Recruiter-friendly',
   resumeStyle: 'Classic',
   saveTitle: '',
   result: null,
@@ -94,6 +117,7 @@ export const loadCurrentResumeDraft = async (): Promise<ResumeDraft> => {
     return {
       ...createEmptyResumeDraft(),
       ...parsed,
+      importedJobPreview: parsed.importedJobPreview ?? null,
       result: parsed.result ?? null,
     };
   } catch {
@@ -112,12 +136,14 @@ export const clearCurrentResumeDraft = async () => {
 export const createResumeVersion = ({
   title,
   tone,
+  optimizationMode,
   jobDescription,
   profile,
   result,
 }: {
   title: string;
   tone: string;
+  optimizationMode: ResumeOptimizationMode;
   jobDescription: string;
   profile: UserProfile | null;
   result: TailoredResumeResponse;
@@ -127,6 +153,7 @@ export const createResumeVersion = ({
     title: title.trim() || 'Untitled Resume',
     createdAt: new Date().toISOString(),
     tone,
+    optimizationMode,
     jobDescription,
     profileName: profile?.fullName || 'Unknown User',
     result,

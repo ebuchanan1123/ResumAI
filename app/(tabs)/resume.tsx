@@ -23,6 +23,7 @@ import {
   loadSavedResumeVersions,
   saveCurrentResumeDraft,
   saveResumeVersions,
+  type ResumeOptimizationMode,
   type SavedResumeVersion,
 } from '@/lib/resumeStorage';
 import {
@@ -35,6 +36,15 @@ import { API_URL } from '@/config/api';
 import { loadProfileFromStorage, type UserProfile } from '@/lib/profileStorage';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
+const RESUME_MODE_OPTIONS: ResumeOptimizationMode[] = [
+  'ATS-first',
+  'Recruiter-friendly',
+  'Technical-heavy',
+  'Concise',
+  'Leadership/impact',
+  'Entry-level student',
+  'Startup-focused',
+];
 type ResumeStyle =
   | 'Classic'
   | 'Modern'
@@ -81,6 +91,15 @@ type TailoredResumeResponse = {
     details: string;
   }[];
   missingKeywords: string[];
+};
+
+type ImportedJobPreview = {
+  title: string;
+  company: string;
+  location: string;
+  keywords: string[];
+  sourceUrl: string;
+  parseSucceeded: boolean;
 };
 
 type ResultSectionKey =
@@ -480,6 +499,221 @@ const dedupeKeywords = (keywords: string[]) => {
   return unique;
 };
 
+const dedupeCaseInsensitive = (items: string[]) => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const SKILL_CATEGORY_RULES: {
+  label: string;
+  patterns: RegExp[];
+}[] = [
+  {
+    label: 'Languages',
+    patterns: [
+      /\btypescript\b/i,
+      /\bjavascript\b/i,
+      /\bpython\b/i,
+      /\bsql\b/i,
+      /\bjava\b/i,
+      /\bc\+\+\b/i,
+      /\bc#\b/i,
+      /\bgo\b/i,
+      /\bruby\b/i,
+      /\bphp\b/i,
+    ],
+  },
+  {
+    label: 'Frontend',
+    patterns: [
+      /\breact native\b/i,
+      /\breact\b/i,
+      /\bnext\.?js\b/i,
+      /\bexpo\b/i,
+      /\bhtml\b/i,
+      /\bcss\b/i,
+      /\btailwind\b/i,
+      /\bfigma\b/i,
+    ],
+  },
+  {
+    label: 'Backend',
+    patterns: [
+      /\bnode\.?js\b/i,
+      /\bnest\.?js\b/i,
+      /\bexpress\b/i,
+      /\brest\b/i,
+      /\bgraphql\b/i,
+      /\bapi\b/i,
+      /\bauth\b/i,
+      /\bauthentication\b/i,
+      /\bwebsocket/i,
+    ],
+  },
+  {
+    label: 'Database',
+    patterns: [
+      /\bpostgres/i,
+      /\bpostgresql\b/i,
+      /\bmongodb\b/i,
+      /\bfirebase\b/i,
+      /\bmysql\b/i,
+      /\bsupabase\b/i,
+      /\bredis\b/i,
+    ],
+  },
+  {
+    label: 'Cloud & Tools',
+    patterns: [
+      /\bdocker\b/i,
+      /\bazure\b/i,
+      /\baws\b/i,
+      /\bgit\b/i,
+      /\bvercel\b/i,
+      /\brender\b/i,
+      /\bpostman\b/i,
+      /\bci\/cd\b/i,
+      /\bgithub actions\b/i,
+    ],
+  },
+  {
+    label: 'AI',
+    patterns: [
+      /\bopenai\b/i,
+      /\bllm\b/i,
+      /\bmachine learning\b/i,
+      /\bartificial intelligence\b/i,
+      /\bprompt engineering\b/i,
+      /\bai\b/i,
+    ],
+  },
+];
+
+const categorizeSkills = (skills: string[]) => {
+  const categorized = SKILL_CATEGORY_RULES.map((rule) => ({
+    label: rule.label,
+    values: [] as string[],
+  }));
+  const uncategorized: string[] = [];
+
+  skills.forEach((skill) => {
+    const trimmed = skill.trim();
+    if (!trimmed) return;
+
+    const matchIndex = SKILL_CATEGORY_RULES.findIndex((rule) =>
+      rule.patterns.some((pattern) => pattern.test(trimmed))
+    );
+
+    if (matchIndex >= 0) {
+      categorized[matchIndex].values.push(trimmed);
+    } else {
+      uncategorized.push(trimmed);
+    }
+  });
+
+  if (uncategorized.length) {
+    categorized.push({
+      label: 'Additional',
+      values: uncategorized,
+    });
+  }
+
+  return categorized
+    .map((group) => ({
+      ...group,
+      values: dedupeCaseInsensitive(group.values),
+    }))
+    .filter((group) => group.values.length > 0);
+};
+
+const PROJECT_TECH_CANDIDATES = [
+  'TypeScript',
+  'JavaScript',
+  'Python',
+  'SQL',
+  'React',
+  'React Native',
+  'Next.js',
+  'Expo',
+  'Node.js',
+  'NestJS',
+  'Express',
+  'REST APIs',
+  'GraphQL',
+  'PostgreSQL',
+  'MongoDB',
+  'Firebase',
+  'Supabase',
+  'Docker',
+  'Azure',
+  'AWS',
+  'OpenAI API',
+  'LLM pipelines',
+  'Machine Learning',
+];
+
+const normalizeTechMatch = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const extractTechStack = (textParts: string[], fallbackSkills: string[]) => {
+  const corpus = textParts.join(' ').toLowerCase();
+  const candidates = dedupeCaseInsensitive([...PROJECT_TECH_CANDIDATES, ...fallbackSkills]);
+
+  return candidates
+    .filter((candidate) => {
+      const normalized = normalizeTechMatch(candidate);
+      return normalized && corpus.includes(normalized);
+    })
+    .slice(0, 4);
+};
+
+const buildResumeHeadline = (skills: string[]) => {
+  const lowered = skills.map((skill) => skill.toLowerCase());
+
+  let roleLabel = 'Software Developer';
+  if (lowered.some((skill) => skill.includes('react')) && lowered.some((skill) => skill.includes('node'))) {
+    roleLabel = 'Full-Stack Developer';
+  } else if (lowered.some((skill) => skill.includes('react') || skill.includes('next') || skill.includes('expo'))) {
+    roleLabel = 'Frontend Developer';
+  } else if (lowered.some((skill) => skill.includes('node') || skill.includes('nest') || skill.includes('express'))) {
+    roleLabel = 'Backend Developer';
+  }
+
+  const highlights = dedupeCaseInsensitive(
+    skills.filter((skill) =>
+      /(react|node|typescript|javascript|python|postgres|openai|ai|next|react native|nest)/i.test(skill)
+    )
+  ).slice(0, 3);
+
+  if (!highlights.length) {
+    return roleLabel;
+  }
+
+  return `${roleLabel} | ${highlights.join(', ')}`;
+};
+
+const normalizeForKeywordSearch = (value: string) =>
+  ` ${value.toLowerCase().replace(/[^a-z0-9+#./-]+/g, ' ')} `;
+
+const resumeContainsKeyword = (corpus: string, keyword: string) => {
+  const canonical = canonicalizeKeyword(keyword);
+  if (!canonical) return false;
+  return corpus.includes(` ${canonical} `);
+};
+
+const countKeywordOccurrences = (corpus: string, keyword: string) => {
+  const canonical = canonicalizeKeyword(keyword);
+  if (!canonical) return 0;
+  const escaped = canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const matches = corpus.match(new RegExp(`\\b${escaped}\\b`, 'g'));
+  return matches ? matches.length : 0;
+};
+
 const formatKeywordLabel = (keyword: string) =>
   keyword
     .split(/[\s-]+/)
@@ -493,9 +727,14 @@ export default function ResumeScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [jobDescription, setJobDescription] = useState('');
+  const [jobUrl, setJobUrl] = useState('');
+  const [importedJobPreview, setImportedJobPreview] = useState<ImportedJobPreview | null>(null);
   const [tone, setTone] = useState<Tone>('Technical');
+  const [optimizationMode, setOptimizationMode] =
+    useState<ResumeOptimizationMode>('Recruiter-friendly');
   const [resumeStyle, setResumeStyle] = useState<ResumeStyle>('Classic');
   const [loading, setLoading] = useState(false);
+  const [importingJob, setImportingJob] = useState(false);
   const [result, setResult] = useState<TailoredResumeResponse | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [savedVersions, setSavedVersions] = useState<SavedResumeVersion[]>([]);
@@ -525,11 +764,16 @@ export default function ResumeScreen() {
         ]);
 
         setProfile(storedProfile);
+        setJobUrl(storedDraft.jobUrl || '');
+        setImportedJobPreview((storedDraft.importedJobPreview as ImportedJobPreview | null) || null);
         setSavedVersions(storedVersions);
         setJobDescription(storedDraft.jobDescription || '');
         setSaveTitle(storedDraft.saveTitle || '');
         if (storedDraft.tone === 'Concise' || storedDraft.tone === 'Technical' || storedDraft.tone === 'Impact-focused') {
           setTone(storedDraft.tone);
+        }
+        if (RESUME_MODE_OPTIONS.includes(storedDraft.optimizationMode as ResumeOptimizationMode)) {
+          setOptimizationMode(storedDraft.optimizationMode as ResumeOptimizationMode);
         }
         if (RESUME_STYLE_OPTIONS.some((option) => option.value === storedDraft.resumeStyle)) {
           setResumeStyle(storedDraft.resumeStyle as ResumeStyle);
@@ -551,8 +795,11 @@ export default function ResumeScreen() {
 
     const timeoutId = setTimeout(() => {
       void saveCurrentResumeDraft({
+        jobUrl,
+        importedJobPreview,
         jobDescription,
         tone,
+        optimizationMode,
         resumeStyle,
         saveTitle,
         result,
@@ -560,7 +807,17 @@ export default function ResumeScreen() {
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [draftHydrated, jobDescription, tone, resumeStyle, saveTitle, result]);
+  }, [
+    draftHydrated,
+    jobUrl,
+    importedJobPreview,
+    jobDescription,
+    tone,
+    optimizationMode,
+    resumeStyle,
+    saveTitle,
+    result,
+  ]);
 
   const toggleSection = (key: ResultSectionKey) => {
     setExpandedSections((prev) => ({
@@ -580,6 +837,62 @@ export default function ResumeScreen() {
       showAlert('Loaded', 'Latest profile data loaded.');
     } catch {
       showAlert('Error', 'Failed to reload profile.');
+    }
+  };
+
+  const importJobFromUrl = async () => {
+    if (!jobUrl.trim()) {
+      showAlert('Error', 'Paste a job posting URL first.');
+      return;
+    }
+
+    try {
+      setImportingJob(true);
+
+      const res = await fetch(`${API_URL}/import-job`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobUrl: jobUrl.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to import job posting.');
+      }
+
+      const preview: ImportedJobPreview = {
+        title: typeof data.title === 'string' ? data.title : '',
+        company: typeof data.company === 'string' ? data.company : '',
+        location: typeof data.location === 'string' ? data.location : '',
+        keywords: Array.isArray(data.keywords) ? data.keywords.slice(0, 8) : [],
+        sourceUrl: typeof data.sourceUrl === 'string' ? data.sourceUrl : jobUrl.trim(),
+        parseSucceeded: Boolean(data.parseSucceeded),
+      };
+
+      setImportedJobPreview(preview);
+
+      if (typeof data.jobDescriptionText === 'string' && data.jobDescriptionText.trim()) {
+        setJobDescription(data.jobDescriptionText.trim());
+      }
+
+      if (!preview.parseSucceeded) {
+        showAlert(
+          'Imported with edits needed',
+          'We pulled what we could from the job post. Review the description box and edit anything that looks off.'
+        );
+        return;
+      }
+
+      showAlert('Imported', 'Job posting details were imported into the description box.');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'Failed to import job posting.');
+    } finally {
+      setImportingJob(false);
     }
   };
 
@@ -621,6 +934,7 @@ export default function ResumeScreen() {
           profile,
           jobDescription,
           tone,
+          optimizationMode,
         }),
       });
 
@@ -668,6 +982,7 @@ export default function ResumeScreen() {
       const newVersion = createResumeVersion({
         title: versionTitle,
         tone,
+        optimizationMode,
         jobDescription,
         profile,
         result,
@@ -690,6 +1005,9 @@ export default function ResumeScreen() {
     setResult(version.result);
     setJobDescription(version.jobDescription);
     setTone(version.tone as Tone);
+    if (version.optimizationMode && RESUME_MODE_OPTIONS.includes(version.optimizationMode)) {
+      setOptimizationMode(version.optimizationMode);
+    }
     showAlert('Loaded', 'Saved resume version loaded into the editor.');
   };
 
@@ -784,41 +1102,75 @@ export default function ResumeScreen() {
     setResult({ ...result, certifications: updated });
   };
 
+  const applyAtsAction = (action: {
+    type: 'add_skill' | 'add_summary_keyword';
+    keyword: string;
+    label: string;
+  }) => {
+    if (!result) return;
+
+    const keywordLabel = formatKeywordLabel(action.keyword);
+
+    if (action.type === 'add_skill') {
+      if (result.skills.some((skill) => keywordsOverlap(skill, action.keyword))) {
+        showAlert('Already added', `${keywordLabel} is already represented in your Skills section.`);
+        return;
+      }
+
+      const updatedSkills = dedupeCaseInsensitive([...result.skills, keywordLabel]);
+      setResult({ ...result, skills: updatedSkills });
+      setExpandedSections((prev) => ({ ...prev, skills: true }));
+      showAlert('Applied', `${keywordLabel} was added to Skills.`);
+      return;
+    }
+
+    if (action.type === 'add_summary_keyword') {
+      if (keywordsOverlap(result.summary, action.keyword)) {
+        showAlert('Already included', `${keywordLabel} is already reflected in your Summary.`);
+        return;
+      }
+
+      const addition = ` Focused on ${keywordLabel.toLowerCase()} work where relevant.`;
+      setResult({
+        ...result,
+        summary: `${result.summary.trim()}${addition}`.trim(),
+      });
+      setExpandedSections((prev) => ({ ...prev, summary: true }));
+      showAlert('Applied', `${keywordLabel} was added to the Summary for emphasis.`);
+    }
+  };
+
   const fullResumeText = useMemo(() => {
     if (!result || !profile) return '';
 
     const headerLine = buildContactItems(profile)
       .map((item) => item.label)
       .join(' | ');
+    const headline = buildResumeHeadline(result.skills);
+    const skillGroups = categorizeSkills(result.skills);
 
     return `
 ${profile.fullName || 'Your Name'}
+${headline}
 ${headerLine}
 
-SUMMARY
-${result.summary}
-
-EDUCATION
-${result.education
-  .map(
-    (edu) =>
-      `${edu.school}
-${edu.degree}${edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}
-${edu.startDate} - ${edu.endDate}
-${edu.details || ''}`.trim()
-  )
-  .join('\n\n')}
-
 SKILLS
-${result.skills.join(', ')}
+${skillGroups.map((group) => `${group.label}: ${group.values.join(', ')}`).join('\n')}
 
 PROJECTS
 ${result.projects
   .map(
-    (project) =>
-      `${project.name}
-${project.role}
-${project.bullets.map((b) => `• ${b}`).join('\n')}`.trim()
+    (project) => {
+      const projectTech = extractTechStack(
+        [project.name, project.role, ...project.bullets],
+        result.skills
+      );
+
+      return `
+${project.name}${project.role ? ` - ${project.role}` : ''}
+${projectTech.length ? `Tech: ${projectTech.join(', ')}` : ''}
+${project.bullets.map((b) => `• ${b}`).join('\n')}`.trim();
+    }
   )
   .join('\n\n')}
 
@@ -829,7 +1181,18 @@ ${result.experience
       `${exp.company}
 ${exp.title}
 ${exp.startDate} - ${exp.endDate}${exp.location ? ` | ${exp.location}` : ''}
-${exp.bullets.map((b) => `• ${b}`).join('\n')}`.trim()
+${exp.bullets.slice(0, 2).map((b) => `• ${b}`).join('\n')}`.trim()
+  )
+  .join('\n\n')}
+
+EDUCATION
+${result.education
+  .map(
+    (edu) =>
+      `${edu.school}
+${edu.degree}${edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}
+${edu.endDate ? `Expected ${edu.endDate}` : [edu.startDate, edu.endDate].filter(Boolean).join(' - ')}
+${edu.details || ''}`.trim()
   )
   .join('\n\n')}
 
@@ -857,30 +1220,34 @@ ${cert.details || ''}`.trim()
   const atsInsights = useMemo(() => {
     if (!result || !jobDescription.trim()) return null;
 
-    const resumeCorpus = [
-      result.summary,
-      result.skills.join(' '),
-      ...result.education.map((edu) =>
-        [edu.school, edu.degree, edu.fieldOfStudy, edu.details].filter(Boolean).join(' ')
-      ),
-      ...result.projects.map((project) =>
-        [project.name, project.role, ...project.bullets].filter(Boolean).join(' ')
-      ),
-      ...result.experience.map((exp) =>
-        [exp.company, exp.title, exp.location, ...exp.bullets].filter(Boolean).join(' ')
-      ),
-      ...result.certifications.map((cert) =>
-        [cert.name, cert.issuer, cert.details, cert.credentialId].filter(Boolean).join(' ')
-      ),
-    ]
-      .join(' ')
-      .toLowerCase();
+    const summaryText = result.summary;
+    const skillsText = result.skills.join(' ');
+    const projectsText = result.projects
+      .map((project) => [project.name, project.role, ...project.bullets].filter(Boolean).join(' '))
+      .join(' ');
+    const experienceText = result.experience
+      .map((exp) => [exp.company, exp.title, exp.location, ...exp.bullets].filter(Boolean).join(' '))
+      .join(' ');
+    const educationText = result.education
+      .map((edu) => [edu.school, edu.degree, edu.fieldOfStudy, edu.details].filter(Boolean).join(' '))
+      .join(' ');
+    const certificationsText = result.certifications
+      .map((cert) => [cert.name, cert.issuer, cert.details, cert.credentialId].filter(Boolean).join(' '))
+      .join(' ');
 
-    const normalizedResumeCorpus = ` ${resumeCorpus.replace(/[^a-z0-9+#./-]+/g, ' ')} `;
+    const resumeCorpus = [
+      summaryText,
+      skillsText,
+      projectsText,
+      experienceText,
+      educationText,
+      certificationsText,
+    ].join(' ');
+
+    const normalizedResumeCorpus = normalizeForKeywordSearch(resumeCorpus);
     const extractedKeywords = dedupeKeywords(extractImportantKeywords(jobDescription)).slice(0, 16);
     const matchedKeywords = extractedKeywords.filter((keyword) => {
-      const canonical = canonicalizeKeyword(keyword);
-      return canonical ? normalizedResumeCorpus.includes(` ${canonical} `) : false;
+      return resumeContainsKeyword(normalizedResumeCorpus, keyword);
     });
     const suggestedKeywords = dedupeKeywords(
       result.missingKeywords
@@ -892,6 +1259,22 @@ ${cert.details || ''}`.trim()
             !matchedKeywords.some((matchedKeyword) => keywordsOverlap(matchedKeyword, keyword))
         )
     ).slice(0, 8);
+
+    const weakMatches = extractedKeywords.filter((keyword) => {
+      if (matchedKeywords.some((matchedKeyword) => keywordsOverlap(matchedKeyword, keyword))) {
+        return false;
+      }
+
+      const parts = canonicalizeKeyword(keyword)
+        .split(' ')
+        .filter((part) => part.length >= 5);
+
+      return parts.some((part) => normalizedResumeCorpus.includes(` ${part} `));
+    }).slice(0, 5);
+
+    const overusedKeywords = dedupeKeywords(
+      matchedKeywords.filter((keyword) => countKeywordOccurrences(normalizedResumeCorpus, keyword) >= 3)
+    ).slice(0, 5);
 
     const coverageRatio =
       extractedKeywords.length === 0 ? 1 : matchedKeywords.length / extractedKeywords.length;
@@ -917,12 +1300,133 @@ ${cert.details || ''}`.trim()
       color = '#84CC16';
     }
 
+    const sectionCorpora = [
+      { key: 'summary', label: 'Summary', corpus: normalizeForKeywordSearch(summaryText), weight: 0.18 },
+      { key: 'skills', label: 'Skills', corpus: normalizeForKeywordSearch(skillsText), weight: 0.24 },
+      { key: 'projects', label: 'Projects', corpus: normalizeForKeywordSearch(projectsText), weight: 0.34 },
+      { key: 'experience', label: 'Experience', corpus: normalizeForKeywordSearch(experienceText), weight: 0.24 },
+    ] as const;
+
+    const sectionScores = sectionCorpora.map((section) => {
+      const sectionMatches = extractedKeywords.filter((keyword) =>
+        resumeContainsKeyword(section.corpus, keyword)
+      );
+      const sectionRatio =
+        extractedKeywords.length === 0 ? 1 : sectionMatches.length / extractedKeywords.length;
+      const sectionScore = Math.max(
+        1,
+        Math.min(10, Math.round(sectionRatio * 10 + Math.min(sectionMatches.length, 2)))
+      );
+
+      return {
+        key: section.key,
+        label: section.label,
+        score: sectionScore,
+        matchedKeywords: sectionMatches,
+      };
+    });
+
+    const recruiterFeedback: string[] = [];
+
+    const summaryScore = sectionScores.find((section) => section.key === 'summary')?.score ?? 0;
+    const skillsScore = sectionScores.find((section) => section.key === 'skills')?.score ?? 0;
+    const projectsScore = sectionScores.find((section) => section.key === 'projects')?.score ?? 0;
+    const experienceScore = sectionScores.find((section) => section.key === 'experience')?.score ?? 0;
+
+    if (skillsScore < 7 && suggestedKeywords.length > 0) {
+      recruiterFeedback.push(
+        `Your Skills section is missing some role language, especially ${formatKeywordLabel(
+          suggestedKeywords[0]
+        )}.`
+      );
+    }
+
+    if (projectsScore < 7) {
+      recruiterFeedback.push(
+        'Projects should show more technical depth, product framing, or stack visibility to match this role more strongly.'
+      );
+    }
+
+    if (experienceScore < 6) {
+      recruiterFeedback.push(
+        'Experience bullets read less targeted than the job post. Highlight backend/API work, ownership, or concrete impact more directly where accurate.'
+      );
+    }
+
+    if (summaryScore < 6 && result.summary.trim()) {
+      recruiterFeedback.push(
+        'The Summary is not carrying much ATS value right now. Make it more role-specific or keep it tighter and more technical.'
+      );
+    }
+
+    if (!/\d/.test(`${projectsText} ${experienceText}`)) {
+      recruiterFeedback.push(
+        'This role values concrete impact. Several bullets would feel stronger with quantified or more specific outcomes where truthful.'
+      );
+    }
+
+    if (overusedKeywords.length > 0) {
+      recruiterFeedback.push(
+        `Some terms are doing a lot of repetition, especially ${formatKeywordLabel(
+          overusedKeywords[0]
+        )}. Vary the wording so the resume feels sharper.`
+      );
+    }
+
+    if (recruiterFeedback.length === 0) {
+      recruiterFeedback.push(
+        'The resume already covers the core language from the job post well. Focus on tightening a few bullets rather than adding filler.'
+      );
+    }
+
+    const actions: {
+      id: string;
+      label: string;
+      description: string;
+      type: 'add_skill' | 'add_summary_keyword';
+      keyword: string;
+    }[] = dedupeKeywords(suggestedKeywords)
+      .slice(0, 3)
+      .map((keyword, index) => ({
+        id: `skill-${keyword}-${index}`,
+        label: `Add ${formatKeywordLabel(keyword)} to Skills`,
+        description: 'If accurate, add this role term to the Skills section for better coverage.',
+        type: 'add_skill' as const,
+        keyword,
+      }));
+
+    if (
+      summaryScore < 7 &&
+      extractedKeywords.some((keyword) => /(frontend|backend|api|react|node|ai|cloud)/i.test(keyword))
+    ) {
+      const summaryKeyword =
+        extractedKeywords.find((keyword) => /(frontend|backend|api|react|node|ai|cloud)/i.test(keyword)) ||
+        '';
+
+      if (summaryKeyword) {
+        actions.push({
+          id: `summary-${summaryKeyword}`,
+          label: `Emphasize ${formatKeywordLabel(summaryKeyword)} in Summary`,
+          description: 'Adds a short role-focused signal to the summary if it matches your background.',
+          type: 'add_summary_keyword' as const,
+          keyword: summaryKeyword,
+        });
+      }
+    }
+
     return {
       score,
       toneLabel,
       color,
       matchedCount: matchedKeywords.length,
+      matchedKeywords,
+      missingKeywords: suggestedKeywords,
+      weakMatches,
+      overusedKeywords,
       suggestedKeywords,
+      sectionScores,
+      recruiterFeedback,
+      actions,
     };
   }, [jobDescription, result]);
 
@@ -1321,6 +1825,8 @@ ${cert.details || ''}`.trim()
         item.href ? `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>` : escapeHtml(item.label)
       )
       .join('<span class="contact-separator"> | </span>');
+    const headline = buildResumeHeadline(result.skills);
+    const skillGroups = categorizeSkills(result.skills);
 
     return `
 <!doctype html>
@@ -1374,8 +1880,15 @@ ${cert.details || ''}`.trim()
       .contact {
         font-size: 11px;
         color: ${currentStyle.contactColor};
-        margin-bottom: 16px;
+        margin-bottom: 14px;
         padding-left: 18px;
+      }
+
+      .headline {
+        margin: 2px 0 8px 18px;
+        color: ${currentStyle.headingColor};
+        font-size: 11.5pt;
+        font-weight: 700;
       }
 
       .contact a {
@@ -1421,6 +1934,13 @@ ${cert.details || ''}`.trim()
         font-size: ${currentStyle.metaFontSize};
       }
 
+      .tech-line {
+        color: ${currentStyle.accentColor};
+        font-size: ${currentStyle.metaFontSize};
+        font-weight: 700;
+        margin: 3px 0 5px 0;
+      }
+
       ul {
         margin: 4px 0 0 18px;
         padding: 0;
@@ -1437,58 +1957,30 @@ ${cert.details || ''}`.trim()
       .para {
         margin: 0;
       }
+
+      .skill-group {
+        margin: 0 0 4px 0;
+      }
+
+      .skill-label {
+        font-weight: 700;
+        color: ${currentStyle.headingColor};
+      }
     </style>
   </head>
   <body>
     <div class="resume-shell">
     <h1>${escapeHtml(profile.fullName || 'Your Name')}</h1>
+    <div class="headline">${escapeHtml(headline)}</div>
     <div class="contact">${contactLine}</div>
 
-    <div class="section-title">SUMMARY</div>
-    <p class="para">${escapeHtml(result.summary)}</p>
-
-    <div class="resume-section">
-      ${
-        result.education.length > 0
-          ? `
-      <div class="section-heading-block">
-        <div class="section-title">EDUCATION</div>
-        <div class="item">
-          <div class="item-title">${escapeHtml(result.education[0].school)}</div>
-          <div class="item-subtitle">${escapeHtml(
-            `${result.education[0].degree}${
-              result.education[0].fieldOfStudy ? `, ${result.education[0].fieldOfStudy}` : ''
-            }`
-          )}</div>
-          <div class="meta">${escapeHtml(
-            `${result.education[0].startDate} - ${result.education[0].endDate}`
-          )}</div>
-          ${result.education[0].details ? `<div>${escapeHtml(result.education[0].details)}</div>` : ''}
-        </div>
-      </div>
-
-      ${result.education
-        .slice(1)
-        .map(
-          (edu) => `
-        <div class="item">
-          <div class="item-title">${escapeHtml(edu.school)}</div>
-          <div class="item-subtitle">${escapeHtml(
-            `${edu.degree}${edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}`
-          )}</div>
-          <div class="meta">${escapeHtml(`${edu.startDate} - ${edu.endDate}`)}</div>
-          ${edu.details ? `<div>${escapeHtml(edu.details)}</div>` : ''}
-        </div>
-      `
-        )
-        .join('')}
-      `
-          : ''
-      }
-    </div>
-
     <div class="section-title">SKILLS</div>
-    <p class="para">${escapeHtml(result.skills.join(', '))}</p>
+    ${skillGroups
+      .map(
+        (group) =>
+          `<div class="skill-group"><span class="skill-label">${escapeHtml(group.label)}:</span> ${escapeHtml(group.values.join(', '))}</div>`
+      )
+      .join('')}
 
     <div class="resume-section">
       ${
@@ -1499,6 +1991,19 @@ ${cert.details || ''}`.trim()
         <div class="item">
           <div class="item-title">${escapeHtml(result.projects[0].name)}</div>
           <div class="item-subtitle">${escapeHtml(result.projects[0].role)}</div>
+          ${
+            extractTechStack(
+              [result.projects[0].name, result.projects[0].role, ...result.projects[0].bullets],
+              result.skills
+            ).length
+              ? `<div class="tech-line">${escapeHtml(
+                  `Tech: ${extractTechStack(
+                    [result.projects[0].name, result.projects[0].role, ...result.projects[0].bullets],
+                    result.skills
+                  ).join(', ')}`
+                )}</div>`
+              : ''
+          }
           <ul>
             ${result.projects[0].bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
           </ul>
@@ -1512,6 +2017,16 @@ ${cert.details || ''}`.trim()
         <div class="item">
           <div class="item-title">${escapeHtml(project.name)}</div>
           <div class="item-subtitle">${escapeHtml(project.role)}</div>
+          ${
+            extractTechStack([project.name, project.role, ...project.bullets], result.skills).length
+              ? `<div class="tech-line">${escapeHtml(
+                  `Tech: ${extractTechStack(
+                    [project.name, project.role, ...project.bullets],
+                    result.skills
+                  ).join(', ')}`
+                )}</div>`
+              : ''
+          }
           <ul>
             ${project.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
           </ul>
@@ -1539,7 +2054,7 @@ ${cert.details || ''}`.trim()
             }`
           )}</div>
           <ul>
-            ${result.experience[0].bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
+            ${result.experience[0].bullets.slice(0, 2).map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
           </ul>
         </div>
       </div>
@@ -1555,8 +2070,52 @@ ${cert.details || ''}`.trim()
             `${exp.startDate} - ${exp.endDate}${exp.location ? ` | ${exp.location}` : ''}`
           )}</div>
           <ul>
-            ${exp.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
+            ${exp.bullets.slice(0, 2).map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
           </ul>
+        </div>
+      `
+        )
+        .join('')}
+      `
+          : ''
+      }
+    </div>
+
+    <div class="resume-section">
+      ${
+        result.education.length > 0
+          ? `
+      <div class="section-heading-block">
+        <div class="section-title">EDUCATION</div>
+        <div class="item">
+          <div class="item-title">${escapeHtml(result.education[0].school)}</div>
+          <div class="item-subtitle">${escapeHtml(
+            `${result.education[0].degree}${
+              result.education[0].fieldOfStudy ? `, ${result.education[0].fieldOfStudy}` : ''
+            }`
+          )}</div>
+          <div class="meta">${escapeHtml(
+            result.education[0].endDate
+              ? `Expected ${result.education[0].endDate}`
+              : [result.education[0].startDate, result.education[0].endDate].filter(Boolean).join(' - ')
+          )}</div>
+          ${result.education[0].details ? `<div>${escapeHtml(result.education[0].details)}</div>` : ''}
+        </div>
+      </div>
+
+      ${result.education
+        .slice(1)
+        .map(
+          (edu) => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(edu.school)}</div>
+          <div class="item-subtitle">${escapeHtml(
+            `${edu.degree}${edu.fieldOfStudy ? `, ${edu.fieldOfStudy}` : ''}`
+          )}</div>
+          <div class="meta">${escapeHtml(
+            edu.endDate ? `Expected ${edu.endDate}` : [edu.startDate, edu.endDate].filter(Boolean).join(' - ')
+          )}</div>
+          ${edu.details ? `<div>${escapeHtml(edu.details)}</div>` : ''}
         </div>
       `
         )
@@ -1646,6 +2205,8 @@ ${cert.details || ''}`.trim()
         const itemGap = 10;
         const bulletIndent = 12;
         const lineHeight = 14;
+        const headline = buildResumeHeadline(result.skills);
+        const skillGroups = categorizeSkills(result.skills);
 
         let y = marginTop;
 
@@ -1707,6 +2268,16 @@ ${cert.details || ''}`.trim()
             fontSize: 9.5,
             lineGap: 12,
             color: [85, 85, 85],
+          });
+        };
+
+        const drawTechLine = (techStack: string[]) => {
+          if (!techStack.length) return;
+          drawWrappedText(`Tech: ${techStack.join(', ')}`, bodyX, bodyContentWidth, {
+            fontSize: 9.5,
+            lineGap: 12,
+            color: theme.accentColor,
+            fontStyle: 'bold',
           });
         };
 
@@ -1777,12 +2348,14 @@ ${cert.details || ''}`.trim()
           meta,
           details,
           bullets,
+          techStack,
         }: {
           title?: string;
           subtitle?: string;
           meta?: string;
           details?: string;
           bullets?: string[];
+          techStack?: string[];
         }) => {
           ensureSpace(42);
           if (title?.trim()) {
@@ -1805,6 +2378,9 @@ ${cert.details || ''}`.trim()
             drawMetaLine(meta);
             y += 5;
           }
+          if (techStack?.length) {
+            drawTechLine(techStack);
+          }
           if (details?.trim()) {
             drawWrappedText(details, bodyX, bodyContentWidth, { fontSize: 10, lineGap: 13 });
           }
@@ -1818,41 +2394,35 @@ ${cert.details || ''}`.trim()
         pdf.setFontSize(22);
         setTextColor(theme.headingColor);
         pdf.text(normalizePdfText(profile.fullName || 'Your Name'), marginX, y);
-        y += 20;
+        y += 18;
+
+        drawWrappedText(headline, marginX, contentWidth, {
+          fontSize: 11,
+          lineGap: 13,
+          color: theme.headingColor,
+          fontStyle: 'bold',
+        });
+        y += 2;
 
         const contactItems = buildContactItems(profile);
 
         if (contactItems.length) {
           drawContactLine(contactItems);
-          y += 12;
+          y += 8;
         }
 
-        drawSectionTitle('SUMMARY');
-        y += sectionContentGap;
-        drawWrappedText(result.summary, bodyX, bodyContentWidth, { fontSize: 10.5, lineGap: 14 });
-        y += 4;
-
-        if (result.education.length) {
-          drawSectionTitle('EDUCATION');
-          y += sectionContentGap;
-          result.education.forEach((edu) => {
-            drawEntry({
-              title: edu.school,
-              subtitle: [edu.degree, edu.fieldOfStudy].filter(Boolean).join(', '),
-              meta: [edu.startDate, edu.endDate].filter(Boolean).join(' - '),
-              details: edu.details,
-            });
-          });
-        }
-
-        if (result.skills.length) {
+        if (skillGroups.length) {
           drawSectionTitle('SKILLS');
           y += sectionContentGap;
-          drawWrappedText(result.skills.join(', '), bodyX, bodyContentWidth, {
-            fontSize: 10.5,
-            lineGap: 14,
+          skillGroups.forEach((group) => {
+            drawWrappedText(`${group.label}: ${group.values.join(', ')}`, bodyX, bodyContentWidth, {
+              fontSize: 10.3,
+              lineGap: 13,
+              color: theme.textColor,
+              fontStyle: 'normal',
+            });
+            y += 2;
           });
-          y += 4;
         }
 
         if (result.projects.length) {
@@ -1862,6 +2432,7 @@ ${cert.details || ''}`.trim()
             drawEntry({
               title: project.name,
               subtitle: project.role,
+              techStack: extractTechStack([project.name, project.role, ...project.bullets], result.skills),
               bullets: project.bullets,
             });
           });
@@ -1877,7 +2448,22 @@ ${cert.details || ''}`.trim()
               meta: [exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : '', exp.location]
                 .filter(Boolean)
                 .join(' | '),
-              bullets: exp.bullets,
+              bullets: exp.bullets.slice(0, 2),
+            });
+          });
+        }
+
+        if (result.education.length) {
+          drawSectionTitle('EDUCATION');
+          y += sectionContentGap;
+          result.education.forEach((edu) => {
+            drawEntry({
+              title: edu.school,
+              subtitle: [edu.degree, edu.fieldOfStudy].filter(Boolean).join(', '),
+              meta: edu.endDate
+                ? `Expected ${edu.endDate}`
+                : [edu.startDate, edu.endDate].filter(Boolean).join(' - '),
+              details: edu.details,
             });
           });
         }
@@ -1936,6 +2522,21 @@ ${cert.details || ''}`.trim()
       <TouchableOpacity
         style={[styles.pillButton, active && styles.pillButtonActive]}
         onPress={() => setTone(value)}
+      >
+        <Text style={[styles.pillButtonText, active && styles.pillButtonTextActive]}>
+          {value}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const ResumeModeButton = ({ value }: { value: ResumeOptimizationMode }) => {
+    const active = optimizationMode === value;
+
+    return (
+      <TouchableOpacity
+        style={[styles.pillButton, active && styles.pillButtonActive]}
+        onPress={() => setOptimizationMode(value)}
       >
         <Text style={[styles.pillButtonText, active && styles.pillButtonTextActive]}>
           {value}
@@ -2116,6 +2717,61 @@ ${cert.details || ''}`.trim()
     );
   };
 
+  const renderJobImporter = () => (
+    <View style={styles.jobImportWrap}>
+      <Text style={styles.label}>Paste Job Link</Text>
+      <TextInput
+        style={styles.input}
+        value={jobUrl}
+        onChangeText={setJobUrl}
+        placeholder="https://boards.greenhouse.io/... or LinkedIn / Indeed / Lever / Ashby / Workday"
+        placeholderTextColor="#8C8C8C"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={[styles.secondaryButtonCompact, importingJob && styles.disabledButton]}
+          onPress={importJobFromUrl}
+          disabled={importingJob}
+        >
+          <Text style={styles.secondaryButtonCompactText}>
+            {importingJob ? 'Importing...' : 'Import Job'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {importedJobPreview ? (
+        <View style={styles.jobPreviewCard}>
+          <Text style={styles.jobPreviewTitle}>
+            {importedJobPreview.title || 'Imported job posting'}
+          </Text>
+          <Text style={styles.jobPreviewMeta}>
+            {[importedJobPreview.company, importedJobPreview.location].filter(Boolean).join(' • ') ||
+              'Company and location could not be fully confirmed'}
+          </Text>
+          <Text style={styles.jobPreviewStatus}>
+            {importedJobPreview.parseSucceeded
+              ? 'Imported successfully. You can still edit the description manually below.'
+              : 'Best-effort parse only. Review and edit the description manually below.'}
+          </Text>
+          <View style={styles.keywordChipRow}>
+            {importedJobPreview.keywords.length > 0 ? (
+              importedJobPreview.keywords.map((keyword) => (
+                <View key={`job-preview-${keyword}`} style={styles.keywordChipMuted}>
+                  <Text style={styles.keywordChipMutedText}>{formatKeywordLabel(keyword)}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.resultBody}>No parsed keywords available yet.</Text>
+            )}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
   const renderAtsSection = () => {
     if (!atsInsights) return null;
 
@@ -2171,19 +2827,116 @@ ${cert.details || ''}`.trim()
           Add more of the role-specific language below if it truthfully matches your experience.
         </Text>
 
-        <View style={styles.keywordChipRow}>
-          {atsInsights.suggestedKeywords.length > 0 ? (
-            atsInsights.suggestedKeywords.map((keyword) => (
-              <View key={keyword} style={styles.keywordChip}>
-                <Text style={styles.keywordChipText}>{formatKeywordLabel(keyword)}</Text>
+        <View style={styles.atsBreakdownGrid}>
+          <View style={styles.atsBreakdownCard}>
+            <Text style={styles.atsBreakdownTitle}>Keyword Coverage</Text>
+            <Text style={styles.atsBreakdownLabel}>Matched keywords</Text>
+            <View style={styles.keywordChipRow}>
+              {atsInsights.matchedKeywords.length > 0 ? (
+                atsInsights.matchedKeywords.map((keyword: string) => (
+                  <View key={`matched-${keyword}`} style={styles.keywordChip}>
+                    <Text style={styles.keywordChipText}>{formatKeywordLabel(keyword)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.resultBody}>No strong role keywords detected yet.</Text>
+              )}
+            </View>
+
+            <Text style={styles.atsBreakdownLabel}>Missing keywords</Text>
+            <View style={styles.keywordChipRow}>
+              {atsInsights.missingKeywords.length > 0 ? (
+                atsInsights.missingKeywords.map((keyword: string) => (
+                  <View key={`missing-${keyword}`} style={styles.keywordChip}>
+                    <Text style={styles.keywordChipText}>{formatKeywordLabel(keyword)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.resultBody}>
+                  No obvious missing keywords right now. Your resume already covers the main language from the job post pretty well.
+                </Text>
+              )}
+            </View>
+
+            <Text style={styles.atsBreakdownLabel}>Weak/indirect matches</Text>
+            <View style={styles.keywordChipRow}>
+              {atsInsights.weakMatches.length > 0 ? (
+                atsInsights.weakMatches.map((keyword: string) => (
+                  <View key={`weak-${keyword}`} style={styles.keywordChipMuted}>
+                    <Text style={styles.keywordChipMutedText}>{formatKeywordLabel(keyword)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.resultBody}>No weak keyword matches detected.</Text>
+              )}
+            </View>
+
+            <Text style={styles.atsBreakdownLabel}>Overused keywords</Text>
+            <View style={styles.keywordChipRow}>
+              {atsInsights.overusedKeywords.length > 0 ? (
+                atsInsights.overusedKeywords.map((keyword: string) => (
+                  <View key={`overused-${keyword}`} style={styles.keywordChipMuted}>
+                    <Text style={styles.keywordChipMutedText}>{formatKeywordLabel(keyword)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.resultBody}>No obvious overused keywords.</Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.atsBreakdownCard}>
+            <Text style={styles.atsBreakdownTitle}>Section Scores</Text>
+            {atsInsights.sectionScores.map((section: { key: string; label: string; score: number }) => (
+              <View key={section.key} style={styles.atsSectionScoreRow}>
+                <Text style={styles.atsSectionScoreLabel}>{section.label}</Text>
+                <Text style={styles.atsSectionScoreValue}>{section.score}/10</Text>
               </View>
-            ))
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.atsBreakdownCard}>
+          <Text style={styles.atsBreakdownTitle}>Recruiter Feedback</Text>
+          {atsInsights.recruiterFeedback.map((feedback: string, index: number) => (
+            <Text key={`feedback-${index}`} style={styles.atsFeedbackItem}>
+              {`\u2022 ${feedback}`}
+            </Text>
+          ))}
+        </View>
+
+        <View style={styles.atsBreakdownCard}>
+          <Text style={styles.atsBreakdownTitle}>Actionable Next Steps</Text>
+          {atsInsights.actions.length > 0 ? (
+            atsInsights.actions.map(
+              (action: {
+                id: string;
+                label: string;
+                description: string;
+                type: 'add_skill' | 'add_summary_keyword';
+                keyword: string;
+              }) => (
+                <View key={action.id} style={styles.atsActionRow}>
+                  <View style={styles.atsActionTextWrap}>
+                    <Text style={styles.atsActionLabel}>{action.label}</Text>
+                    <Text style={styles.atsActionDescription}>{action.description}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.atsApplyButton}
+                    onPress={() => applyAtsAction(action)}
+                  >
+                    <Text style={styles.atsApplyButtonText}>Apply</Text>
+                  </TouchableOpacity>
+                </View>
+              )
+            )
           ) : (
             <Text style={styles.resultBody}>
-              No obvious missing keywords right now. Your resume already covers the main language from the job post pretty well.
+              No quick fixes to apply right now. Focus on tightening project bullets and outcomes.
             </Text>
           )}
         </View>
+
       </SectionShell>
     );
   };
@@ -2649,6 +3402,7 @@ ${cert.details || ''}`.trim()
                     <Text style={styles.sectionSupportText}>
                       Add the job posting you want to target. ResumAI will tailor your resume around the most relevant language and requirements.
                     </Text>
+                    {renderJobImporter()}
                     <TextInput
                       style={[styles.input, styles.jobDescriptionArea]}
                       multiline
@@ -2664,6 +3418,13 @@ ${cert.details || ''}`.trim()
                       <ToneButton value="Concise" />
                       <ToneButton value="Technical" />
                       <ToneButton value="Impact-focused" />
+                    </View>
+
+                    <Text style={styles.label}>Optimization Mode</Text>
+                    <View style={styles.pillRow}>
+                      {RESUME_MODE_OPTIONS.map((mode) => (
+                        <ResumeModeButton key={mode} value={mode} />
+                      ))}
                     </View>
 
                     <View style={styles.actionRow}>
@@ -2759,6 +3520,7 @@ ${cert.details || ''}`.trim()
                   <Text style={styles.sectionSupportText}>
                     Add the job posting you want to target. ResumAI will tailor your resume around the most relevant language and requirements.
                   </Text>
+                  {renderJobImporter()}
                   <TextInput
                     style={[styles.input, styles.jobDescriptionArea, styles.jobDescriptionAreaCompact]}
                     multiline
@@ -2774,6 +3536,13 @@ ${cert.details || ''}`.trim()
                     <ToneButton value="Concise" />
                     <ToneButton value="Technical" />
                     <ToneButton value="Impact-focused" />
+                  </View>
+
+                  <Text style={styles.label}>Optimization Mode</Text>
+                  <View style={styles.pillRow}>
+                    {RESUME_MODE_OPTIONS.map((mode) => (
+                      <ResumeModeButton key={mode} value={mode} />
+                    ))}
                   </View>
 
                   <View style={styles.actionRow}>
@@ -3036,6 +3805,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
     width: '100%',
+  },
+  jobImportWrap: {
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  jobPreviewCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 12,
+  },
+  jobPreviewTitle: {
+    color: '#1E293B',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  jobPreviewMeta: {
+    color: '#64748B',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  jobPreviewStatus: {
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
   },
   jobDescriptionArea: {
     minHeight: 220,
@@ -3446,6 +4243,101 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontSize: 13,
     fontWeight: '700',
+  },
+  keywordChipMuted: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  keywordChipMutedText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  atsBreakdownGrid: {
+    marginTop: 16,
+  },
+  atsBreakdownCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 14,
+  },
+  atsBreakdownTitle: {
+    color: '#1E293B',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  atsBreakdownLabel: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  atsSectionScoreRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  atsSectionScoreLabel: {
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  atsSectionScoreValue: {
+    color: '#1E293B',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  atsFeedbackItem: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 10,
+  },
+  atsActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 12,
+  },
+  atsActionTextWrap: {
+    flex: 1,
+  },
+  atsActionLabel: {
+    color: '#1E293B',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  atsActionDescription: {
+    color: '#64748B',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  atsApplyButton: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  atsApplyButtonText: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '800',
   },
   savedVersionCard: {
     backgroundColor: '#FFFFFF',
