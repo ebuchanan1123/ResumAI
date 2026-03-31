@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
+import { Link } from 'expo-router';
 import { loadProfileFromStorage, type UserProfile } from '@/lib/profileStorage';
 import { loadCurrentResumeDraft, type ResumeDraft } from '@/lib/resumeStorage';
 
@@ -203,6 +204,12 @@ export default function InterviewPrepScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView style={styles.screen} contentContainerStyle={styles.contentContainer}>
+          <Link href="/resume" asChild>
+            <TouchableOpacity style={styles.backButton}>
+              <Text style={styles.backButtonText}>Back to Resume Generator</Text>
+            </TouchableOpacity>
+          </Link>
+
           <View style={styles.pageHeader}>
             <Text style={styles.eyebrow}>Interview Prep</Text>
             <Text style={styles.title}>Prep for this job application with a clearer story</Text>
@@ -292,6 +299,21 @@ const styles = StyleSheet.create({
   },
   pageHeader: {
     marginBottom: 24,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '800',
   },
   eyebrow: {
     color: '#2563EB',
