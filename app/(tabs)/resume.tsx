@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -62,7 +63,8 @@ type ResumeStyle =
   | 'Canvas'
   | 'Harbor'
   | 'Rosewood'
-  | 'Regent';
+  | 'Regent'
+  | 'Cobalt';
 
 type TailoredResumeResponse = {
   summary: string;
@@ -251,6 +253,14 @@ const RESUME_STYLE_OPTIONS: {
     accent: '#2F5DA8',
     previewBackground: '#FFF8E7',
     previewInk: '#1E3A8A',
+  },
+  {
+    value: 'Cobalt',
+    label: 'Cobalt Editorial',
+    description: 'Bright cobalt with crisp ivory contrast',
+    accent: '#1D4ED8',
+    previewBackground: '#F8FAFF',
+    previewInk: '#1E293B',
   },
 ];
 
@@ -1656,7 +1666,6 @@ ${cert.details || ''}`.trim()
     const projectLead = result.projects[0];
     const experienceLead = result.experience[0];
     const topKeywords = atsInsights?.matchedKeywords.slice(0, 3).map(formatKeywordLabel) ?? [];
-    const missingKeywords = atsInsights?.missingKeywords.slice(0, 2).map(formatKeywordLabel) ?? [];
     const companyName = importedJobPreview?.company || extractCompanyName(jobDescription) || 'the team';
     const roleTitle =
       importedJobPreview?.title ||
@@ -1680,21 +1689,6 @@ ${cert.details || ''}`.trim()
     const recruiterMessage = `Hi, I’m ${profile.fullName || 'a candidate'} and I recently applied for ${roleTitle} at ${companyName}. I built my materials around the role’s focus on ${
       topKeywords.length > 0 ? topKeywords.join(', ') : 'the core technical requirements'
     }, and I think my background in ${result.skills.slice(0, 4).join(', ')} could be a strong match. I’d love to stay on your radar if the team is still reviewing applicants.`;
-
-    const interviewTalkingPoints = [
-      projectLead
-        ? `Walk through ${projectLead.name} as a real product: what problem it solved, how you built it, and what technical tradeoffs you made.`
-        : null,
-      experienceLead
-        ? `Use ${experienceLead.company} to show how you contributed in a real delivery environment, not just personal projects.`
-        : null,
-      topKeywords.length > 0
-        ? `Be ready to connect your background directly to ${topKeywords.join(', ')} because those are major signals in this posting.`
-        : null,
-      missingKeywords.length > 0
-        ? `If asked about gaps, address ${missingKeywords.join(', ')} honestly and explain adjacent experience or fast ramp-up ability.`
-        : null,
-    ].filter(Boolean) as string[];
 
     const checklist = [
       {
@@ -1720,95 +1714,22 @@ ${cert.details || ''}`.trim()
       },
       {
         label: 'Interview prep ready',
-        complete: interviewTalkingPoints.length >= 3,
+        complete: !!result,
         helper:
-          interviewTalkingPoints.length >= 3
-            ? 'Talking points are ready to practice.'
-            : 'Generate more role-specific material to improve interview prep.',
+          result
+            ? 'Open the Interview Prep page for talking points and likely questions.'
+            : 'Generate a tailored resume first to unlock interview prep.',
       },
     ];
 
     return {
       checklist,
-      atsScore: atsInsights?.score ?? null,
       bullets: bulletDraft.bullets,
       coverLetter: coverLetterDraft.coverLetter.trim(),
-      interviewTalkingPoints,
       recruiterMessage,
       whyImFit,
     };
   }, [atsInsights, bulletDraft.bullets, coverLetterDraft.coverLetter, importedJobPreview, jobDescription, profile, result]);
-
-  const interviewPrep = useMemo(() => {
-    if (!result || !profile) return null;
-
-    const strongestProject =
-      result.projects.find((project) =>
-        extractTechStack([project.name, project.role, ...project.bullets], result.skills).length >= 2
-      ) || result.projects[0] || null;
-
-    const likelyTechnicalQuestions = dedupeCaseInsensitive([
-      ...((atsInsights?.matchedKeywords || [])
-        .filter((keyword) => TECHNICAL_KEYWORD_PATTERN.test(keyword))
-        .slice(0, 3)
-        .map((keyword) => `How have you used ${formatKeywordLabel(keyword)} in a real project or team environment?`) || []),
-      strongestProject
-        ? `Walk me through the architecture and tradeoffs behind ${strongestProject.name}.`
-        : '',
-      result.experience[0]
-        ? `Tell me about a time you improved or delivered something meaningful at ${result.experience[0].company}.`
-        : '',
-    ]).filter(Boolean).slice(0, 5);
-
-    const topTalkingPoints = dedupeCaseInsensitive([
-      ...(applicationKit?.interviewTalkingPoints || []),
-      strongestProject
-        ? `${strongestProject.name} is probably your strongest project to mention because it shows product-building depth and technical decision-making.`
-        : '',
-      atsInsights?.gapAnalysis.quantifiedOutcomes.length
-        ? 'Be ready with one or two truthful outcome metrics, even if they are small, because this role seems to value measurable impact.'
-        : '',
-      result.experience[0]
-        ? `Use ${result.experience[0].company} to prove you can work in a real team environment, not just on solo projects.`
-        : '',
-    ]).filter(Boolean).slice(0, 5);
-
-    const strongestProjectSummary = strongestProject
-      ? `${strongestProject.name}${strongestProject.role ? ` (${strongestProject.role})` : ''} stands out because it is the clearest example of you building something real with relevant stack depth.`
-      : 'Your strongest project will appear here once a tailored resume is generated.';
-
-    const biggestGapLabel =
-      atsInsights?.gapAnalysis.technicalSkills[0] ||
-      atsInsights?.gapAnalysis.toolsPlatforms[0] ||
-      atsInsights?.gapAnalysis.businessLanguage[0] ||
-      '';
-
-    const biggestGapExplanation = biggestGapLabel
-      ? `The biggest visible gap is ${formatKeywordLabel(
-          biggestGapLabel
-        )}. If asked, be honest about not having direct depth there yet, then pivot to adjacent experience and how quickly you have ramped up on similar tools or systems.`
-      : 'There is no single glaring gap right now. If asked about fit, focus on your strongest evidence and be ready to explain how your projects map to the role.';
-
-    const whyYouFitAnswer = applicationKit
-      ? `${applicationKit.whyImFit} What makes me especially interested in this role is that it lines up well with the kind of technical work I’ve already been building and the areas I want to keep growing in.`
-      : '';
-
-    const prepResources = [
-      'Practice a 60-second story for your strongest project: problem, stack, tradeoffs, and outcome.',
-      'Pick 2 experience bullets and be ready to expand them into STAR-style answers.',
-      'Review the top matched keywords and prepare one concrete example for each.',
-      'Write down one honest answer for your biggest gap so you can address it confidently.',
-    ];
-
-    return {
-      topTalkingPoints,
-      likelyTechnicalQuestions,
-      whyYouFitAnswer,
-      strongestProjectSummary,
-      biggestGapExplanation,
-      prepResources,
-    };
-  }, [applicationKit, atsInsights, profile, result]);
 
   const copyFullResume = async () => {
     if (!fullResumeText) return;
@@ -1908,6 +1829,13 @@ ${cert.details || ''}`.trim()
         textColor: [30, 41, 59],
         accentColor: [47, 93, 168],
         sectionFill: [255, 248, 231],
+      },
+      Cobalt: {
+        font: 'helvetica',
+        headingColor: [15, 23, 42],
+        textColor: [30, 41, 59],
+        accentColor: [29, 78, 216],
+        sectionFill: [239, 246, 255],
       },
     };
 
@@ -2195,6 +2123,29 @@ ${cert.details || ''}`.trim()
         bulletMarkerColor: '#2F5DA8',
         headingBorder: '6px solid #2F5DA8',
         sectionTitleBorder: '4px solid #C9A66B',
+      },
+      Cobalt: {
+        fontFamily: '"Segoe UI", Helvetica, Arial, sans-serif',
+        bodyFontSize: '10.9pt',
+        bodyLineHeight: '1.48',
+        textColor: '#1E293B',
+        headingSize: '24pt',
+        headingWeight: '800',
+        headingColor: '#0F172A',
+        sectionSpacing: '18px',
+        sectionBorder: 'none',
+        itemSpacing: '12px',
+        subtitleStyle: 'normal',
+        metaFontSize: '9.5pt',
+        pageBackground: '#F8FAFF',
+        accentColor: '#1D4ED8',
+        contactColor: '#1D4ED8',
+        sectionTitleBackground: '#DBEAFE',
+        sectionTitlePadding: '6px 10px',
+        itemTitleColor: '#0F172A',
+        bulletMarkerColor: '#1D4ED8',
+        headingBorder: '6px solid #1D4ED8',
+        sectionTitleBorder: '4px solid #1D4ED8',
       },
     };
 
@@ -3044,10 +2995,7 @@ ${cert.details || ''}`.trim()
         </Text>
 
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.secondaryButtonCompact}
-            onPress={copyFullResume}
-          >
+          <TouchableOpacity style={styles.secondaryButtonCompact} onPress={copyFullResume}>
             <Text style={styles.secondaryButtonCompactText}>Copy Resume</Text>
           </TouchableOpacity>
 
@@ -3094,16 +3042,6 @@ ${cert.details || ''}`.trim()
 
         <View style={styles.applicationKitGrid}>
           <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>ATS Score</Text>
-            <Text style={styles.applicationKitStatValue}>
-              {applicationKit.atsScore !== null ? `${applicationKit.atsScore}%` : 'N/A'}
-            </Text>
-            <Text style={styles.applicationKitBody}>
-              A quick signal for how well the current resume aligns with the role language.
-            </Text>
-          </View>
-
-          <View style={styles.applicationKitCard}>
             <Text style={styles.applicationKitTitle}>Why I’m a Fit</Text>
             <Text style={styles.applicationKitBody}>{applicationKit.whyImFit}</Text>
             <TouchableOpacity
@@ -3123,29 +3061,6 @@ ${cert.details || ''}`.trim()
             >
               <Text style={styles.smallOutlineButtonText}>Copy</Text>
             </TouchableOpacity>
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Interview Talking Points</Text>
-            {applicationKit.interviewTalkingPoints.length > 0 ? (
-              applicationKit.interviewTalkingPoints.map((point, index) => (
-                <Text key={`talking-point-${index}`} style={styles.atsFeedbackItem}>
-                  {`\u2022 ${point}`}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.applicationKitBody}>
-                Generate the resume first to unlock role-specific talking points.
-              </Text>
-            )}
-            {applicationKit.interviewTalkingPoints.length > 0 ? (
-              <TouchableOpacity
-                style={styles.smallOutlineButton}
-                onPress={() => copySection(applicationKit.interviewTalkingPoints.map((point) => `• ${point}`).join('\n'))}
-              >
-                <Text style={styles.smallOutlineButtonText}>Copy</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
 
           <View style={styles.applicationKitCard}>
@@ -3261,72 +3176,21 @@ ${cert.details || ''}`.trim()
     </View>
   );
 
-  const renderInterviewPrepSection = () => {
-    if (!interviewPrep) return null;
+  const renderInterviewPrepCta = () => {
+    if (!result) return null;
 
     return (
       <View style={styles.resultCard}>
         <Text style={styles.sectionEyebrow}>Interview Prep</Text>
-        <Text style={styles.resultTitle}>Talk Through Your Story With Confidence</Text>
+        <Text style={styles.resultTitle}>Get tailored interview preparation for this job application</Text>
         <Text style={styles.exportHelperText}>
-          Use this panel to practice the strongest angles of your application before recruiter screens or technical interviews.
+          Turn this tailored resume into likely interview questions, strongest talking points, gap explanations, and a sharper fit story for this exact role.
         </Text>
-
-        <View style={styles.applicationKitGrid}>
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Top 5 Talking Points</Text>
-            {interviewPrep.topTalkingPoints.map((point, index) => (
-              <Text key={`prep-point-${index}`} style={styles.atsFeedbackItem}>
-                {`\u2022 ${point}`}
-              </Text>
-            ))}
-            <TouchableOpacity
-              style={styles.smallOutlineButton}
-              onPress={() => copySection(interviewPrep.topTalkingPoints.map((point) => `• ${point}`).join('\n'))}
-            >
-              <Text style={styles.smallOutlineButtonText}>Copy</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Likely Technical Questions</Text>
-            {interviewPrep.likelyTechnicalQuestions.map((question, index) => (
-              <Text key={`prep-question-${index}`} style={styles.atsFeedbackItem}>
-                {`\u2022 ${question}`}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Why You’re a Fit</Text>
-            <Text style={styles.applicationKitBody}>{interviewPrep.whyYouFitAnswer}</Text>
-            <TouchableOpacity
-              style={styles.smallOutlineButton}
-              onPress={() => copySection(interviewPrep.whyYouFitAnswer)}
-            >
-              <Text style={styles.smallOutlineButtonText}>Copy</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Strongest Project To Mention</Text>
-            <Text style={styles.applicationKitBody}>{interviewPrep.strongestProjectSummary}</Text>
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Biggest Gap And How To Explain It</Text>
-            <Text style={styles.applicationKitBody}>{interviewPrep.biggestGapExplanation}</Text>
-          </View>
-
-          <View style={styles.applicationKitCard}>
-            <Text style={styles.applicationKitTitle}>Prep Resources</Text>
-            {interviewPrep.prepResources.map((resource, index) => (
-              <Text key={`prep-resource-${index}`} style={styles.atsFeedbackItem}>
-                {`\u2022 ${resource}`}
-              </Text>
-            ))}
-          </View>
-        </View>
+        <Link href="../interview-prep" asChild>
+          <TouchableOpacity style={styles.primaryButtonCompact}>
+            <Text style={styles.primaryButtonCompactText}>Ace the Interview -&gt;</Text>
+          </TouchableOpacity>
+        </Link>
       </View>
     );
   };
@@ -3564,15 +3428,6 @@ ${cert.details || ''}`.trim()
             </View>
           </View>
 
-          <View style={styles.atsBreakdownCard}>
-            <Text style={styles.atsBreakdownTitle}>Section Scores</Text>
-            {atsInsights.sectionScores.map((section: { key: string; label: string; score: number }) => (
-              <View key={section.key} style={styles.atsSectionScoreRow}>
-                <Text style={styles.atsSectionScoreLabel}>{section.label}</Text>
-                <Text style={styles.atsSectionScoreValue}>{section.score}/10</Text>
-              </View>
-            ))}
-          </View>
         </View>
 
         <View style={styles.atsBreakdownCard}>
@@ -3582,20 +3437,6 @@ ${cert.details || ''}`.trim()
               {`\u2022 ${feedback}`}
             </Text>
           ))}
-        </View>
-
-        <View style={styles.atsBreakdownCard}>
-          <Text style={styles.atsBreakdownTitle}>Tailoring Reasoning</Text>
-          <View style={styles.reasoningCardGrid}>
-            {atsInsights.reasoningCards.map(
-              (card: { title: string; body: string }, index: number) => (
-                <View key={`${card.title}-${index}`} style={styles.reasoningCard}>
-                  <Text style={styles.reasoningCardTitle}>{card.title}</Text>
-                  <Text style={styles.reasoningCardBody}>{card.body}</Text>
-                </View>
-              )
-            )}
-          </View>
         </View>
 
         <View style={styles.atsBreakdownCard}>
@@ -3660,20 +3501,6 @@ ${cert.details || ''}`.trim()
               </View>
             </View>
 
-            <View style={styles.gapCard}>
-              <Text style={styles.gapCardTitle}>Nice-to-have Qualifications</Text>
-              <View style={styles.keywordChipRow}>
-                {atsInsights.gapAnalysis.niceToHaveQualifications.length > 0 ? (
-                  atsInsights.gapAnalysis.niceToHaveQualifications.map((keyword: string) => (
-                    <View key={`gap-nice-${keyword}`} style={styles.keywordChipMuted}>
-                      <Text style={styles.keywordChipMutedText}>{formatKeywordLabel(keyword)}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.resultBody}>No major optional qualifications are missing from the job post signals we detected.</Text>
-                )}
-              </View>
-            </View>
           </View>
 
           <View style={styles.fitAssessmentCard}>
@@ -3762,24 +3589,6 @@ ${cert.details || ''}`.trim()
             ))}
           </View>
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.secondaryButtonCompact}
-              onPress={copyFullResume}
-            >
-              <Text style={styles.secondaryButtonCompactText}>Copy Resume</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.secondaryButtonCompact, exportingPdf && styles.disabledButton]}
-              onPress={exportPdf}
-              disabled={exportingPdf}
-            >
-              <Text style={styles.secondaryButtonCompactText}>
-                {exportingPdf ? 'Exporting...' : 'Download PDF'}
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </>
     );
@@ -3787,7 +3596,7 @@ ${cert.details || ''}`.trim()
 
   const renderEditorWorkspaceIntro = () => (
     <View style={styles.editorWorkspaceHeader}>
-      <Text style={styles.sectionEyebrow}>Generated Resume</Text>
+      <Text style={styles.sectionEyebrow}>Resume Editor</Text>
       <Text style={styles.editorWorkspaceTitle}>Edit Your Resume</Text>
       <Text style={styles.editorWorkspaceSubtitle}>
         Open any section below to refine the generated content, then export the version you want.
@@ -4103,9 +3912,9 @@ ${cert.details || ''}`.trim()
       <>
         {savedVersionsSection}
         {renderOutputOverview()}
-        {renderApplicationKitSection()}
-        {renderInterviewPrepSection()}
         {renderAtsSection()}
+        {renderApplicationKitSection()}
+        {renderInterviewPrepCta()}
         {renderEditorSections()}
       </>
     );
@@ -4272,9 +4081,9 @@ ${cert.details || ''}`.trim()
 
               {isDesktop && !loading ? (
                 <View style={styles.desktopBottomStack}>
-                  {renderApplicationKitSection()}
-                  {renderInterviewPrepSection()}
                   {renderAtsSection()}
+                  {renderApplicationKitSection()}
+                  {renderInterviewPrepCta()}
                   {renderSaveVersionSection()}
                   {renderSavedVersionsSection()}
                   {result ? (
