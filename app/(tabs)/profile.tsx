@@ -1301,14 +1301,15 @@ const styles = StyleSheet.create({
     },
     title: {
     color: '#1E293B',
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 46,
+    marginBottom: 12,
     },
     subtitle: {
     color: '#64748B',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     marginBottom: 20,
     },
     overviewCard: {
@@ -1348,7 +1349,7 @@ const styles = StyleSheet.create({
     },
     overviewTitle: {
     color: '#1E293B',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '800',
     },
     overviewText: {
@@ -1451,7 +1452,7 @@ const styles = StyleSheet.create({
     },
     compactCardTitle: {
     color: '#1E293B',
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
     },
     compactCardSubtitle: {
@@ -1473,12 +1474,12 @@ const styles = StyleSheet.create({
     },
     groupHeading: {
     color: '#1E293B',
-    fontSize: 21,
+    fontSize: 25,
     fontWeight: '800',
     },
     groupCaption: {
     color: '#64748B',
-    fontSize: 14,
+    fontSize: 15,
     marginTop: 4,
     },
     sectionCount: {
@@ -1554,7 +1555,7 @@ const styles = StyleSheet.create({
     },
     addActionsTitle: {
     color: '#1E293B',
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
     },
     addActionsSubtitle: {

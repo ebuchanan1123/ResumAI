@@ -374,14 +374,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#1E293B',
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 46,
+    marginBottom: 12,
   },
   subtitle: {
     color: '#64748B',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
   },
   desktopGrid: {
     width: '100%',
@@ -421,7 +422,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#1E293B',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
   },
   profileStatusHeader: {

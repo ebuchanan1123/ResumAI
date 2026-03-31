@@ -325,14 +325,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#1E293B',
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 46,
+    marginBottom: 12,
   },
   subtitle: {
     color: '#64748B',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     maxWidth: 860,
   },
   grid: {
@@ -364,20 +365,21 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: '#1E293B',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 30,
+    marginBottom: 12,
   },
   bodyText: {
     color: '#475569',
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 23,
   },
   listItem: {
     color: '#334155',
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 10,
   },
   smallButton: {
     alignSelf: 'flex-start',

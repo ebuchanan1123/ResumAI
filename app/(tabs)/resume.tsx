@@ -4243,7 +4243,7 @@ const styles = StyleSheet.create({
   },
   outputStudioTitle: {
     color: '#1E293B',
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
   },
   outputStudioSubtitle: {
@@ -4285,7 +4285,7 @@ const styles = StyleSheet.create({
   },
   workflowTitle: {
     color: '#1E293B',
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
   },
   workflowSubtitle: {
@@ -4367,14 +4367,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#1E293B',
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 46,
+    marginBottom: 12,
   },
   subtitle: {
     color: '#64748B',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     marginBottom: 0,
   },
   sectionCard: {
@@ -4393,7 +4394,7 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     color: '#2563EB',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
@@ -4401,7 +4402,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#1E293B',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
   },
   sectionSupportText: {
@@ -4717,7 +4718,7 @@ const styles = StyleSheet.create({
   resultTitle: {
     color: '#1E293B',
     fontWeight: '800',
-    fontSize: 24,
+    fontSize: 28,
   },
   resultHeaderDescription: {
     color: '#64748B',
@@ -4862,7 +4863,7 @@ const styles = StyleSheet.create({
   },
   editorWorkspaceTitle: {
     color: '#1E293B',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
   },
   editorWorkspaceSubtitle: {
@@ -4895,7 +4896,7 @@ const styles = StyleSheet.create({
   },
   editorItemTitle: {
     color: '#1E293B',
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '800',
   },
   editorItemSubtitle: {

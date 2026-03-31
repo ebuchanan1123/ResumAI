@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   splashTitle: {
     color: '#1E293B',
-    fontSize: 42,
+    fontSize: 46,
     fontWeight: '800',
     marginBottom: 10,
   },
@@ -455,14 +455,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#1E293B',
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 10,
+    lineHeight: 46,
+    marginBottom: 12,
   },
   subtitle: {
     color: '#64748B',
-    fontSize: 17,
-    lineHeight: 25,
+    fontSize: 18,
+    lineHeight: 27,
     marginBottom: 28,
   },
   section: {
@@ -567,7 +568,7 @@ const styles = StyleSheet.create({
   },
   resultsTitle: {
     color: '#1E293B',
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
   },
   copyAllText: {
@@ -607,7 +608,7 @@ const styles = StyleSheet.create({
   bulletCardTitle: {
     color: '#1E293B',
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 17,
   },
   bulletActions: {
     flexDirection: 'row',
