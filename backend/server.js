@@ -495,7 +495,7 @@ Generate a tailored resume from the user's profile and the target job descriptio
 Return your answer in valid JSON only, with this exact structure:
 {
   "summary": "string",
-  "skills": ["string", "string", "string", "string", "string", "string"],
+  "skills": ["string", "string", "string", "string", "string", "string", "string", "string", "string", "string", "string", "string"],
   "experience": [
     {
       "company": "string",
@@ -546,7 +546,11 @@ Rules:
 - Prefer bullets that make a recruiter curious enough to click links or ask follow-up questions
 - When supported by the profile, make project names slightly more descriptive and compelling without becoming long or flashy
 - If a project is deployed, production-ready, user-facing, or a live product based on the profile, reflect that signal naturally in the wording
-- For skills, return the most relevant skills for this role
+- For skills, return 8 to 12 of the most relevant skills for this role when possible
+- Do not limit skills to exact keywords copied from the job description
+- Include adjacent or supporting skills that are still truthful and supported by the profile when they strengthen the match
+- Prefer specific tools, frameworks, platforms, technical concepts, and domain capabilities over generic soft skills
+- Avoid duplicates, near-duplicates, and vague filler skills
 - Include relevant certifications when they strengthen the application
 - For summary, sound polished, ambitious, and specific; avoid weak filler phrases
 - For missingKeywords, include only high-value role-specific technical terms or domain terms that are clearly relevant and truly absent
@@ -582,7 +586,7 @@ ${trimmedJobDescription}
 
     return res.json({
       summary: typeof parsed.summary === 'string' ? parsed.summary : '',
-      skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 6) : [],
+      skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 12) : [],
       experience: Array.isArray(parsed.experience) ? parsed.experience.slice(0, 3) : [],
       projects: Array.isArray(parsed.projects) ? parsed.projects.slice(0, 3) : [],
       education: Array.isArray(parsed.education) ? parsed.education.slice(0, 2) : [],
@@ -633,6 +637,7 @@ Rules:
 - Do not use placeholders like [Company] or [Hiring Manager] unless the information is truly unavailable
 - If the hiring manager is not known, begin with "Dear Hiring Team,"
 - Keep it to about 250 to 350 words
+- Do not use em dashes; use commas, periods, or standard hyphens instead
 - Use only information supported by the profile
 - Do not invent fake metrics, employers, achievements, or technologies
 - Show clear alignment with the role and company where possible

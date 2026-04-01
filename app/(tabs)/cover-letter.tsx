@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -75,6 +76,31 @@ export default function CoverLetterScreen() {
 
     loadProfile();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const refreshDraft = async () => {
+        try {
+          const storedDraft = await loadCoverLetterDraft();
+          setJobDescription(storedDraft.jobDescription || '');
+          setCompanyContext(storedDraft.companyContext || '');
+          setHiringManager(storedDraft.hiringManager || '');
+          if (
+            storedDraft.tone === 'Concise' ||
+            storedDraft.tone === 'Technical' ||
+            storedDraft.tone === 'Impact-focused'
+          ) {
+            setTone(storedDraft.tone);
+          }
+          setCoverLetter(storedDraft.coverLetter || '');
+        } catch {
+          // Keep the current editor state if refresh fails.
+        }
+      };
+
+      void refreshDraft();
+    }, [])
+  );
 
   useEffect(() => {
     if (!draftHydrated) return;

@@ -21,6 +21,7 @@ import * as Sharing from 'expo-sharing';
 import {
   loadBulletDraft,
   loadCoverLetterDraft,
+  saveCoverLetterDraft,
   type BulletDraft,
   type CoverLetterDraft,
 } from '@/lib/generationDraftStorage';
@@ -1014,6 +1015,19 @@ export default function ResumeScreen() {
     }
   };
 
+  const syncCoverLetterDraft = async (draft: CoverLetterDraft) => {
+    setCoverLetterDraft(draft);
+    await saveCoverLetterDraft(draft);
+  };
+
+  const buildCoverLetterContext = () => {
+    if (!importedJobPreview) return '';
+
+    return [importedJobPreview.company, importedJobPreview.title, importedJobPreview.location]
+      .filter(Boolean)
+      .join(' | ');
+  };
+
   const tailorResume = async () => {
     if (!profile) {
       showAlert('Error', 'Profile is not loaded yet.');
@@ -1062,7 +1076,12 @@ export default function ResumeScreen() {
         throw new Error(data.error || 'Failed to tailor resume.');
       }
 
-      setResult(data);
+      const nextResumeResult = {
+        ...data,
+        skills: Array.isArray(data.skills) ? data.skills : [],
+      };
+
+      setResult(nextResumeResult);
       setExpandedEntryEditor(null);
       setExpandedSections({
         saved: false,
@@ -1074,6 +1093,61 @@ export default function ResumeScreen() {
         experience: false,
         certifications: false,
       });
+
+      const baseCoverLetterDraft: CoverLetterDraft = {
+        jobDescription,
+        companyContext: buildCoverLetterContext(),
+        hiringManager: '',
+        tone,
+        coverLetter: '',
+      };
+
+      try {
+        const coverLetterUsage = await getDailyUsage('cover_letter_generation');
+        if (coverLetterUsage.remaining > 0) {
+          await consumeDailyUsage('cover_letter_generation');
+
+          const coverLetterRes = await fetch(`${API_URL}/generate-cover-letter`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              profile,
+              jobDescription,
+              companyContext: baseCoverLetterDraft.companyContext,
+              hiringManager: '',
+              tone,
+            }),
+          });
+
+          const coverLetterData = await coverLetterRes.json();
+
+          if (!coverLetterRes.ok) {
+            await releaseDailyUsage('cover_letter_generation');
+            throw new Error(coverLetterData.error || 'Failed to generate cover letter.');
+          }
+
+          await syncCoverLetterDraft({
+            ...baseCoverLetterDraft,
+            coverLetter:
+              typeof coverLetterData.coverLetter === 'string' ? coverLetterData.coverLetter : '',
+          });
+        } else {
+          await syncCoverLetterDraft(baseCoverLetterDraft);
+          showAlert(
+            'Resume generated',
+            `The resume was updated, but today's cover letter generation limit was reached. The cover letter export will stay disabled until a new draft is generated.`
+          );
+        }
+      } catch (coverLetterError: any) {
+        await syncCoverLetterDraft(baseCoverLetterDraft);
+        showAlert(
+          'Resume generated with cover letter issue',
+          coverLetterError?.message ||
+            'The resume was updated, but the cover letter could not be regenerated.'
+        );
+      }
     } catch (err: any) {
       if (usageConsumed) {
         await releaseDailyUsage('resume_generation');
