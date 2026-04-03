@@ -853,7 +853,7 @@ export default function ResumeScreen() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantError, setAssistantError] = useState('');
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantInputHeight, setAssistantInputHeight] = useState(44);
+  const [assistantInputHeight, setAssistantInputHeight] = useState(24);
 
   const [expandedSections, setExpandedSections] = useState<Record<ResultSectionKey, boolean>>({
     saved: false,
@@ -1252,7 +1252,7 @@ export default function ResumeScreen() {
     setAssistantInput('');
     setAssistantError('');
     setAssistantOpen(false);
-    setAssistantInputHeight(44);
+    setAssistantInputHeight(24);
   };
 
   const updateSummary = (text: string) => {
@@ -4122,10 +4122,12 @@ ${cert.details || ''}`.trim()
                 textAlignVertical="top"
                 returnKeyType="send"
                 blurOnSubmit={false}
+                selectionColor="#9CA3AF"
+                cursorColor="#D1D5DB"
                 onContentSizeChange={(event) => {
                   const nextHeight = Math.min(
-                    92,
-                    Math.max(44, Math.ceil(event.nativeEvent.contentSize.height) + 12)
+                    52,
+                    Math.max(24, Math.ceil(event.nativeEvent.contentSize.height))
                   );
                   setAssistantInputHeight(nextHeight);
                 }}
@@ -5546,21 +5548,22 @@ const styles = StyleSheet.create({
     borderColor: '#4B5563',
     paddingLeft: 14,
     paddingRight: 8,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
     flexDirection: 'row',
     alignItems: 'flex-end',
   },
   assistantInput: {
     flex: 1,
-    minHeight: 44,
-    maxHeight: 92,
+    minHeight: 24,
+    maxHeight: 52,
     color: '#FFFFFF',
     fontSize: 15,
     lineHeight: 21,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingRight: 12,
+    outlineStyle: 'none',
   },
   assistantSendButton: {
     width: 48,
