@@ -4042,12 +4042,20 @@ ${cert.details || ''}`.trim()
                 <Text style={styles.assistantWindowEyebrow}>Cloudflare AI</Text>
                 <Text style={styles.assistantWindowTitle}>Ask ResumAI</Text>
               </View>
-              <TouchableOpacity
-                style={styles.assistantCloseButton}
-                onPress={() => setAssistantOpen(false)}
-              >
-                <Text style={styles.assistantCloseButtonText}>Close</Text>
-              </TouchableOpacity>
+              <View style={styles.assistantHeaderActions}>
+                <TouchableOpacity
+                  style={styles.assistantCloseButton}
+                  onPress={resetAssistant}
+                >
+                  <Text style={styles.assistantCloseButtonText}>New Chat</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.assistantCloseButton}
+                  onPress={() => setAssistantOpen(false)}
+                >
+                  <Text style={styles.assistantCloseButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.assistantWindowSubtitle}>
@@ -4160,17 +4168,6 @@ ${cert.details || ''}`.trim()
               </TouchableOpacity>
             </View>
 
-            <View style={styles.actionRow}>
-              {assistantMessages.length > 0 ? (
-                <TouchableOpacity
-                  style={[styles.secondaryButtonCompact, assistantLoading && styles.disabledButton]}
-                  onPress={resetAssistant}
-                  disabled={assistantLoading}
-                >
-                  <Text style={styles.secondaryButtonCompactText}>New Chat</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
           </View>
         ) : null}
 
@@ -5401,6 +5398,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  assistantHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
   assistantWindowEyebrow: {
     color: '#2563EB',
     fontSize: 12,
@@ -5438,6 +5440,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    minWidth: 98,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   assistantCloseButtonText: {
     color: '#1D4ED8',
