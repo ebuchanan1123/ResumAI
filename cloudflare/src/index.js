@@ -72,20 +72,49 @@ ${compactJson(context.atsInsights)}
 `.trim();
 
 const parseModelJson = (value) => {
+  if (!value) return null;
+
   try {
     return JSON.parse(value);
   } catch {
+    const fencedMatch = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fencedMatch?.[1]) {
+      try {
+        return JSON.parse(fencedMatch[1].trim());
+      } catch {
+        // fall through
+      }
+    }
+
+    const objectMatch = value.match(/\{[\s\S]*\}/);
+    if (objectMatch?.[0]) {
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch {
+        return null;
+      }
+    }
+
     return null;
   }
 };
 
 const extractAiText = (result) => {
-  if (!result || typeof result !== 'object') return '';
+  if (!result) return '';
+  if (typeof result === 'string') return sanitizeText(result);
+  if (Array.isArray(result)) {
+    return result.map((item) => extractAiText(item)).find(Boolean) || '';
+  }
+  if (typeof result !== 'object') return '';
 
   return (
     sanitizeText(result.response) ||
     sanitizeText(result.result?.response) ||
-    sanitizeText(result.output_text)
+    sanitizeText(result.output_text) ||
+    sanitizeText(result.text) ||
+    sanitizeText(result.content?.[0]?.text) ||
+    sanitizeText(result.choices?.[0]?.message?.content) ||
+    sanitizeText(result.choices?.[0]?.text)
   );
 };
 
@@ -231,15 +260,30 @@ export class ChatSession {
 
       const userMessage = makeMessage('user', sanitizeText(body.message));
       const history = [...stored.messages, userMessage].slice(-12);
-      const prompt = `${buildSystemPrompt(nextContext, history)}\n\nLatest user request:\n${userMessage.content}`;
+      const aiResult = await this.env.AI.run(MODEL, {
+        messages: [
+          {
+            role: 'system',
+            content: buildSystemPrompt(nextContext, history),
+          },
+          {
+            role: 'user',
+            content: userMessage.content,
+          },
+        ],
+        max_tokens: 700,
+        temperature: 0.3,
+        response_format: {
+          type: 'json_object',
+        },
+      });
 
-      const aiResult = await this.env.AI.run(MODEL, { prompt });
       const aiText = extractAiText(aiResult);
       const parsed = parseModelJson(aiText);
       const answer =
         sanitizeText(parsed?.answer) ||
         sanitizeText(aiText) ||
-        'I could not generate a useful answer from the assistant yet.';
+        'The assistant returned an empty response. Check the Worker logs for the raw model output.';
       const suggestedActions = Array.isArray(parsed?.suggestedActions)
         ? parsed.suggestedActions
             .map((item) => sanitizeText(item))
