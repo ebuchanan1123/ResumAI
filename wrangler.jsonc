@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "resumai",
+  "main": "cloudflare/src/index.js",
   "compatibility_date": "2026-04-03",
   "observability": {
     "enabled": true
@@ -10,5 +11,24 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAT_SESSIONS",
+        "class_name": "ChatSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ChatSession"
+      ]
+    }
   ]
 }

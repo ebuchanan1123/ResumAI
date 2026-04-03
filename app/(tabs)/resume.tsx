@@ -41,6 +41,7 @@ import {
   releaseDailyUsage,
 } from '@/lib/rateLimits';
 import { API_URL } from '@/config/api';
+import { ASSISTANT_API_URL } from '@/config/assistant';
 import { loadProfileFromStorage, type UserProfile } from '@/lib/profileStorage';
 
 type Tone = 'Concise' | 'Technical' | 'Impact-focused';
@@ -109,6 +110,13 @@ type ImportedJobPreview = {
   keywords: string[];
   sourceUrl: string;
   parseSucceeded: boolean;
+};
+
+type AssistantMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
 };
 
 type ResultSectionKey =
@@ -809,6 +817,14 @@ const BUSINESS_LANGUAGE_PATTERN =
 const METRICS_LANGUAGE_PATTERN =
   /\b(increase|improve|reduce|grew|growth|saved|faster|slower|efficiency|latency|performance|conversion|adoption|retention|accuracy|throughput|scale|scaled)\b/i;
 
+const ASSISTANT_PROMPTS = [
+  'Ask AI about this job',
+  'Improve this bullet',
+  'What keywords am I missing?',
+  'Rewrite my summary for this role',
+  'Why is my ATS score low?',
+];
+
 export default function ResumeScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1400;
@@ -835,6 +851,12 @@ export default function ResumeScreen() {
   const [bulletDraft, setBulletDraft] = useState<BulletDraft>(createEmptyBulletDraftState());
   const [coverLetterDraft, setCoverLetterDraft] =
     useState<CoverLetterDraft>(createEmptyCoverLetterDraftState());
+  const [assistantSessionId, setAssistantSessionId] = useState<string | null>(null);
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
+  const [assistantInput, setAssistantInput] = useState('');
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantSuggestions, setAssistantSuggestions] = useState<string[]>([]);
+  const [assistantError, setAssistantError] = useState('');
 
   const [expandedSections, setExpandedSections] = useState<Record<ResultSectionKey, boolean>>({
     saved: false,
@@ -1044,6 +1066,7 @@ export default function ResumeScreen() {
     try {
       setLoading(true);
       setResult(null);
+      resetAssistant();
 
       const usage = await getDailyUsage('resume_generation');
       if (usage.remaining === 0) {
@@ -1197,6 +1220,7 @@ export default function ResumeScreen() {
     setResult(version.result);
     setJobDescription(version.jobDescription);
     setTone(version.tone as Tone);
+    resetAssistant();
     if (version.optimizationMode && RESUME_MODE_OPTIONS.includes(version.optimizationMode)) {
       setOptimizationMode(version.optimizationMode);
     }
@@ -1216,6 +1240,14 @@ export default function ResumeScreen() {
   const copySection = async (text: string) => {
     await Clipboard.setStringAsync(text);
     showAlert('Copied', 'Section copied to clipboard.');
+  };
+
+  const resetAssistant = () => {
+    setAssistantSessionId(null);
+    setAssistantMessages([]);
+    setAssistantInput('');
+    setAssistantSuggestions([]);
+    setAssistantError('');
   };
 
   const updateSummary = (text: string) => {
@@ -1733,6 +1765,110 @@ ${cert.details || ''}`.trim()
       gapAnalysis,
     };
   }, [jobDescription, result]);
+
+  const assistantContext = useMemo(
+    () => ({
+      profile,
+      jobDescription,
+      resumeResult: result,
+      atsInsights,
+    }),
+    [atsInsights, jobDescription, profile, result]
+  );
+
+  const askAssistant = async (promptOverride?: string) => {
+    const nextPrompt = (promptOverride || assistantInput).trim();
+
+    if (!result) {
+      showAlert('Error', 'Generate a resume first to use the assistant.');
+      return;
+    }
+
+    if (!jobDescription.trim()) {
+      showAlert('Error', 'Add a job description first.');
+      return;
+    }
+
+    if (!ASSISTANT_API_URL) {
+      showAlert(
+        'Assistant not configured',
+        'Set EXPO_PUBLIC_RESUMAI_ASSISTANT_URL in your app environment before using the Cloudflare assistant.'
+      );
+      return;
+    }
+
+    if (!nextPrompt) {
+      showAlert('Error', 'Enter a question for the assistant.');
+      return;
+    }
+
+    const userMessage: AssistantMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      role: 'user',
+      content: nextPrompt,
+      createdAt: new Date().toISOString(),
+    };
+
+    setAssistantLoading(true);
+    setAssistantError('');
+    setAssistantInput('');
+    setAssistantMessages((prev) => [...prev, userMessage]);
+
+    try {
+      const res = await fetch(`${ASSISTANT_API_URL}/assistant/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: assistantSessionId,
+          message: nextPrompt,
+          ...assistantContext,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reach the assistant.');
+      }
+
+      setAssistantSessionId(typeof data.sessionId === 'string' ? data.sessionId : assistantSessionId);
+
+      const nextMessages = Array.isArray(data.messages)
+        ? data.messages.filter(
+            (message: AssistantMessage) =>
+              message &&
+              (message.role === 'user' || message.role === 'assistant') &&
+              typeof message.content === 'string'
+          )
+        : [
+            userMessage,
+            {
+              id: `${Date.now()}-assistant`,
+              role: 'assistant' as const,
+              content:
+                typeof data.answer === 'string'
+                  ? data.answer
+                  : 'The assistant responded, but no message text was returned.',
+              createdAt: new Date().toISOString(),
+            },
+          ];
+
+      setAssistantMessages(nextMessages);
+      setAssistantSuggestions(
+        Array.isArray(data.suggestedActions)
+          ? data.suggestedActions.map((item: string) => item.trim()).filter(Boolean).slice(0, 4)
+          : []
+      );
+    } catch (err: any) {
+      setAssistantError(err.message || 'Failed to reach the assistant.');
+      setAssistantMessages((prev) => prev.filter((message) => message.id !== userMessage.id));
+      showAlert('Error', err.message || 'Failed to reach the assistant.');
+    } finally {
+      setAssistantLoading(false);
+    }
+  };
 
   const applicationKit = useMemo(() => {
     if (!result || !profile) return null;
@@ -3833,6 +3969,108 @@ ${cert.details || ''}`.trim()
     );
   };
 
+  const renderAssistantPanel = () => {
+    if (!result) return null;
+
+    return (
+      <View style={styles.resultCard}>
+        <Text style={styles.sectionEyebrow}>Cloudflare AI</Text>
+        <Text style={styles.resultTitle}>Ask AI About This Role</Text>
+        <Text style={styles.exportHelperText}>
+          Ask follow-up questions about the job, your ATS gaps, or how to improve a specific part of this resume.
+        </Text>
+
+        <View style={styles.assistantPromptRow}>
+          {ASSISTANT_PROMPTS.map((prompt) => (
+            <TouchableOpacity
+              key={prompt}
+              style={[
+                styles.assistantPromptChip,
+                assistantLoading && styles.disabledButton,
+              ]}
+              onPress={() => askAssistant(prompt)}
+              disabled={assistantLoading}
+            >
+              <Text style={styles.assistantPromptChipText}>{prompt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.assistantMessagesWrap}>
+          {assistantMessages.length > 0 ? (
+            assistantMessages.map((message) => (
+              <View
+                key={message.id}
+                style={[
+                  styles.assistantMessageBubble,
+                  message.role === 'user'
+                    ? styles.assistantMessageBubbleUser
+                    : styles.assistantMessageBubbleAssistant,
+                ]}
+              >
+                <Text style={styles.assistantMessageRole}>
+                  {message.role === 'user' ? 'You' : 'ResumAI Assistant'}
+                </Text>
+                <Text style={styles.assistantMessageText}>{message.content}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.resultBody}>
+              Start with a quick prompt like “What keywords am I missing?” or paste a bullet and ask for a stronger rewrite.
+            </Text>
+          )}
+        </View>
+
+        {assistantSuggestions.length > 0 ? (
+          <View style={styles.assistantSuggestionCard}>
+            <Text style={styles.assistantSuggestionTitle}>Suggested next steps</Text>
+            {assistantSuggestions.map((item) => (
+              <Text key={item} style={styles.atsFeedbackItem}>
+                {`\u2022 ${item}`}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {assistantError ? (
+          <Text style={styles.assistantErrorText}>{assistantError}</Text>
+        ) : null}
+
+        <TextInput
+          style={[styles.editInput, styles.assistantInput]}
+          multiline
+          value={assistantInput}
+          onChangeText={setAssistantInput}
+          placeholder="Ask about this role, ATS fit, summary, skills, or a specific bullet..."
+          placeholderTextColor="#8C8C8C"
+          textAlignVertical="top"
+        />
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.primaryButtonCompact, assistantLoading && styles.disabledButton]}
+            onPress={() => askAssistant()}
+            disabled={assistantLoading}
+          >
+            <Text style={styles.primaryButtonCompactText}>
+              {assistantLoading ? 'Thinking...' : 'Send to Assistant'}
+            </Text>
+          </TouchableOpacity>
+
+          {assistantMessages.length > 0 ? (
+            <TouchableOpacity
+              style={[styles.secondaryButtonCompact, assistantLoading && styles.disabledButton]}
+              onPress={resetAssistant}
+              disabled={assistantLoading}
+            >
+              <Text style={styles.secondaryButtonCompactText}>New Chat</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
   const renderEditorWorkspaceIntro = () => (
     <View style={styles.editorWorkspaceHeader}>
       <Text style={styles.sectionEyebrow}>Resume Editor</Text>
@@ -4151,6 +4389,7 @@ ${cert.details || ''}`.trim()
       <>
         {savedVersionsSection}
         {renderOutputOverview()}
+        {renderAssistantPanel()}
         {renderAtsSection()}
         {renderApplicationKitSection()}
         {renderInterviewPrepCta()}
@@ -4307,7 +4546,10 @@ ${cert.details || ''}`.trim()
                   {loading ? (
                     renderWorkflowTimeline()
                   ) : result ? (
-                    renderOutputOverview()
+                    <>
+                      {renderOutputOverview()}
+                      {renderAssistantPanel()}
+                    </>
                   ) : (
                     <View style={styles.emptyState}>
                       <Text style={styles.emptyStateText}>
@@ -5013,6 +5255,81 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     fontSize: 15,
     lineHeight: 23,
+  },
+  assistantPromptRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -5,
+    marginBottom: 6,
+  },
+  assistantPromptChip: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginHorizontal: 5,
+    marginBottom: 10,
+  },
+  assistantPromptChipText: {
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  assistantMessagesWrap: {
+    marginTop: 8,
+  },
+  assistantMessageBubble: {
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  assistantMessageBubbleUser: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  assistantMessageBubbleAssistant: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  assistantMessageRole: {
+    color: '#1E293B',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  assistantMessageText: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  assistantSuggestionCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 6,
+  },
+  assistantSuggestionTitle: {
+    color: '#1E293B',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  assistantErrorText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 12,
+  },
+  assistantInput: {
+    minHeight: 92,
+    marginTop: 12,
+    paddingTop: 12,
   },
   exportHelperText: {
     color: '#64748B',
