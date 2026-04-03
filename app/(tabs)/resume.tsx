@@ -818,14 +818,6 @@ const BUSINESS_LANGUAGE_PATTERN =
 const METRICS_LANGUAGE_PATTERN =
   /\b(increase|improve|reduce|grew|growth|saved|faster|slower|efficiency|latency|performance|conversion|adoption|retention|accuracy|throughput|scale|scaled)\b/i;
 
-const ASSISTANT_PROMPTS = [
-  'Ask AI about this job',
-  'Improve this bullet',
-  'What keywords am I missing?',
-  'Rewrite my summary for this role',
-  'Why is my ATS score low?',
-];
-
 export default function ResumeScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1400;
@@ -4002,22 +3994,6 @@ ${cert.details || ''}`.trim()
               Ask about ATS fit, summary wording, skills, or a specific bullet while you edit.
             </Text>
 
-            <View style={styles.assistantPromptRow}>
-              {ASSISTANT_PROMPTS.map((prompt) => (
-                <TouchableOpacity
-                  key={prompt}
-                  style={[
-                    styles.assistantPromptChip,
-                    assistantLoading && styles.disabledButton,
-                  ]}
-                  onPress={() => askAssistant(prompt)}
-                  disabled={assistantLoading}
-                >
-                  <Text style={styles.assistantPromptChipText}>{prompt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
             <ScrollView
               style={styles.assistantMessagesScroll}
               contentContainerStyle={styles.assistantMessagesContent}
@@ -4028,21 +4004,42 @@ ${cert.details || ''}`.trim()
                   <View
                     key={message.id}
                     style={[
-                      styles.assistantMessageBubble,
+                      styles.assistantMessageRow,
                       message.role === 'user'
-                        ? styles.assistantMessageBubbleUser
-                        : styles.assistantMessageBubbleAssistant,
+                        ? styles.assistantMessageRowUser
+                        : styles.assistantMessageRowAssistant,
                     ]}
                   >
-                    <Text style={styles.assistantMessageRole}>
-                      {message.role === 'user' ? 'You' : 'ResumAI Assistant'}
-                    </Text>
-                    <Text style={styles.assistantMessageText}>{message.content}</Text>
+                    <View
+                      style={[
+                        styles.assistantMessageBubble,
+                        message.role === 'user'
+                          ? styles.assistantMessageBubbleUser
+                          : styles.assistantMessageBubbleAssistant,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.assistantMessageRole,
+                          message.role === 'user' && styles.assistantMessageRoleUser,
+                        ]}
+                      >
+                        {message.role === 'user' ? 'You' : 'ResumAI Assistant'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.assistantMessageText,
+                          message.role === 'user' && styles.assistantMessageTextUser,
+                        ]}
+                      >
+                        {message.content}
+                      </Text>
+                    </View>
                   </View>
                 ))
               ) : (
                 <Text style={styles.resultBody}>
-                  Start with a quick prompt like “What keywords am I missing?” or paste a bullet and ask for a stronger rewrite.
+                  Ask about ATS fit, summary wording, missing keywords, or paste a bullet for a sharper rewrite.
                 </Text>
               )}
 
@@ -5377,27 +5374,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  assistantPromptRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -5,
-    marginBottom: 6,
-  },
-  assistantPromptChip: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginHorizontal: 5,
-    marginBottom: 10,
-  },
-  assistantPromptChipText: {
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: '700',
-  },
   assistantMessagesWrap: {
     marginTop: 8,
   },
@@ -5408,16 +5384,27 @@ const styles = StyleSheet.create({
   assistantMessagesContent: {
     paddingBottom: 4,
   },
+  assistantMessageRow: {
+    width: '100%',
+    marginBottom: 10,
+    flexDirection: 'row',
+  },
+  assistantMessageRowUser: {
+    justifyContent: 'flex-end',
+  },
+  assistantMessageRowAssistant: {
+    justifyContent: 'flex-start',
+  },
   assistantMessageBubble: {
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 10,
+    maxWidth: '84%',
   },
   assistantMessageBubbleUser: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#2563EB',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#1D4ED8',
   },
   assistantMessageBubbleAssistant: {
     backgroundColor: '#F8FAFC',
@@ -5425,7 +5412,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   assistantMessageRole: {
-    color: '#1E293B',
+    color: '#0F172A',
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 6,
@@ -5434,6 +5421,12 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontSize: 14,
     lineHeight: 21,
+  },
+  assistantMessageTextUser: {
+    color: '#FFFFFF',
+  },
+  assistantMessageRoleUser: {
+    color: '#DBEAFE',
   },
   assistantSuggestionCard: {
     backgroundColor: '#F8FAFC',
