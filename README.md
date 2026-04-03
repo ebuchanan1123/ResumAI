@@ -64,18 +64,19 @@ The assistant was added as a Cloudflare-native layer on top of the existing app 
 
 ## Main User Flow
 
-1. User pastes a job description
-2. ResumAI generates a tailored resume
-3. ATS analysis scores alignment and surfaces missing terms
-4. The user opens the floating AI assistant
-5. The app sends:
+1. User builds their profile by uploading their current resume, or entering resume entries manually
+2. User pastes a job description
+3. ResumAI generates a tailored resume
+4. ATS analysis scores alignment and surfaces missing terms
+5. The user opens the floating AI assistant
+6. The app sends:
    - profile
    - job description
    - tailored resume
    - ATS insights
-6. The Cloudflare Worker calls Workers AI
-7. Durable Objects keep the conversation state for that session
-8. The response is shown in the in-app chat widget
+7. The Cloudflare Worker calls Workers AI
+8. Durable Objects keep the conversation state for that session
+9. The response is shown in the in-app chat widget
 
 ## Repo Notes
 
