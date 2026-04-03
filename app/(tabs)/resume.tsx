@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -15,6 +16,7 @@ import {
   type ViewStyle,
   useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -3283,6 +3285,62 @@ ${cert.details || ''}`.trim()
     );
   };
 
+  const AssistantTypingBubble = () => {
+    const dotAnimations = useRef([
+      new Animated.Value(0),
+      new Animated.Value(0),
+      new Animated.Value(0),
+    ]).current;
+
+    useEffect(() => {
+      const loops = dotAnimations.map((animation, index) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(index * 140),
+            Animated.timing(animation, {
+              toValue: -6,
+              duration: 260,
+              useNativeDriver: true,
+            }),
+            Animated.timing(animation, {
+              toValue: 0,
+              duration: 260,
+              useNativeDriver: true,
+            }),
+            Animated.delay(180),
+          ])
+        )
+      );
+
+      loops.forEach((loop) => loop.start());
+
+      return () => {
+        loops.forEach((loop) => loop.stop());
+      };
+    }, [dotAnimations]);
+
+    return (
+      <View style={[styles.assistantMessageRow, styles.assistantMessageRowAssistant]}>
+        <View style={[styles.assistantMessageBubble, styles.assistantMessageBubbleAssistant]}>
+          <Text style={styles.assistantMessageRole}>ResumAI Assistant</Text>
+          <View style={styles.typingDotsRow}>
+            {dotAnimations.map((animation, index) => (
+              <Animated.View
+                key={`typing-dot-${index}`}
+                style={[
+                  styles.typingDot,
+                  {
+                    transform: [{ translateY: animation }],
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const SectionShell = ({
     title,
     sectionKey,
@@ -3996,88 +4054,111 @@ ${cert.details || ''}`.trim()
               Ask about ATS fit, summary wording, skills, or a specific bullet while you edit.
             </Text>
 
-            <ScrollView
-              style={styles.assistantMessagesScroll}
-              contentContainerStyle={styles.assistantMessagesContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {assistantMessages.length > 0 ? (
-                assistantMessages.map((message) => (
-                  <View
-                    key={message.id}
-                    style={[
-                      styles.assistantMessageRow,
-                      message.role === 'user'
-                        ? styles.assistantMessageRowUser
-                        : styles.assistantMessageRowAssistant,
-                    ]}
-                  >
+            <View style={styles.assistantChatShell}>
+              <ScrollView
+                style={styles.assistantMessagesScroll}
+                contentContainerStyle={styles.assistantMessagesContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                {assistantMessages.length > 0 ? (
+                  assistantMessages.map((message) => (
                     <View
+                      key={message.id}
                       style={[
-                        styles.assistantMessageBubble,
+                        styles.assistantMessageRow,
                         message.role === 'user'
-                          ? styles.assistantMessageBubbleUser
-                          : styles.assistantMessageBubbleAssistant,
+                          ? styles.assistantMessageRowUser
+                          : styles.assistantMessageRowAssistant,
                       ]}
                     >
-                      <Text
+                      <View
                         style={[
-                          styles.assistantMessageRole,
-                          message.role === 'user' && styles.assistantMessageRoleUser,
+                          styles.assistantMessageBubble,
+                          message.role === 'user'
+                            ? styles.assistantMessageBubbleUser
+                            : styles.assistantMessageBubbleAssistant,
                         ]}
                       >
-                        {message.role === 'user' ? 'You' : 'ResumAI Assistant'}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.assistantMessageText,
-                          message.role === 'user' && styles.assistantMessageTextUser,
-                        ]}
-                      >
-                        {message.content}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.assistantMessageRole,
+                            message.role === 'user' && styles.assistantMessageRoleUser,
+                          ]}
+                        >
+                          {message.role === 'user' ? 'You' : 'ResumAI Assistant'}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.assistantMessageText,
+                            message.role === 'user' && styles.assistantMessageTextUser,
+                          ]}
+                        >
+                          {message.content}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.resultBody}>
-                  Ask a question about this role or your resume.
-                </Text>
-              )}
-            </ScrollView>
+                  ))
+                ) : (
+                  <Text style={styles.resultBody}>
+                    Ask a question about this role or your resume.
+                  </Text>
+                )}
+                {assistantLoading ? <AssistantTypingBubble /> : null}
+              </ScrollView>
+            </View>
 
             {assistantError ? (
               <Text style={styles.assistantErrorText}>{assistantError}</Text>
             ) : null}
 
-            <TextInput
-              style={[styles.editInput, styles.assistantInput, { height: assistantInputHeight }]}
-              multiline
-              value={assistantInput}
-              onChangeText={setAssistantInput}
-              placeholder="Type your message..."
-              placeholderTextColor="#8C8C8C"
-              textAlignVertical="top"
-              onContentSizeChange={(event) => {
-                const nextHeight = Math.min(
-                  92,
-                  Math.max(44, Math.ceil(event.nativeEvent.contentSize.height) + 14)
-                );
-                setAssistantInputHeight(nextHeight);
-              }}
-            />
+            <View style={styles.assistantComposer}>
+              <TextInput
+                style={[styles.assistantInput, { height: assistantInputHeight }]}
+                multiline
+                value={assistantInput}
+                onChangeText={setAssistantInput}
+                placeholder="Message ResumAI..."
+                placeholderTextColor="#9CA3AF"
+                textAlignVertical="top"
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onContentSizeChange={(event) => {
+                  const nextHeight = Math.min(
+                    92,
+                    Math.max(44, Math.ceil(event.nativeEvent.contentSize.height) + 12)
+                  );
+                  setAssistantInputHeight(nextHeight);
+                }}
+                onKeyPress={(event: any) => {
+                  if (
+                    Platform.OS === 'web' &&
+                    event?.nativeEvent?.key === 'Enter' &&
+                    !event?.nativeEvent?.shiftKey
+                  ) {
+                    event.preventDefault?.();
+                    if (!assistantLoading && assistantInput.trim()) {
+                      void askAssistant();
+                    }
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.assistantSendButton,
+                  (assistantLoading || !assistantInput.trim()) && styles.disabledButton,
+                ]}
+                onPress={() => askAssistant()}
+                disabled={assistantLoading || !assistantInput.trim()}
+              >
+                {assistantLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="arrow-up" size={22} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.primaryButtonCompact, assistantLoading && styles.disabledButton]}
-                onPress={() => askAssistant()}
-                disabled={assistantLoading}
-              >
-                <Text style={styles.primaryButtonCompactText}>
-                  {assistantLoading ? 'Thinking...' : 'Send'}
-                </Text>
-              </TouchableOpacity>
-
               {assistantMessages.length > 0 ? (
                 <TouchableOpacity
                   style={[styles.secondaryButtonCompact, assistantLoading && styles.disabledButton]}
@@ -5338,6 +5419,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10,
   },
+  assistantChatShell: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
   assistantCloseButton: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1,
@@ -5380,7 +5471,6 @@ const styles = StyleSheet.create({
   },
   assistantMessagesScroll: {
     flex: 1,
-    marginTop: 4,
   },
   assistantMessagesContent: {
     paddingBottom: 4,
@@ -5429,18 +5519,57 @@ const styles = StyleSheet.create({
   assistantMessageRoleUser: {
     color: '#DBEAFE',
   },
+  typingDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 18,
+    paddingTop: 2,
+  },
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#94A3B8',
+    marginRight: 6,
+  },
   assistantErrorText: {
     color: '#B91C1C',
     fontSize: 13,
     lineHeight: 19,
     marginTop: 12,
   },
-  assistantInput: {
+  assistantComposer: {
     marginTop: 12,
+    backgroundColor: '#2F2F31',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#4B5563',
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  assistantInput: {
+    flex: 1,
     minHeight: 44,
     maxHeight: 92,
-    paddingTop: 10,
-    paddingBottom: 10,
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 21,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingRight: 12,
+  },
+  assistantSendButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: '#0A84FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   exportHelperText: {
     color: '#64748B',
